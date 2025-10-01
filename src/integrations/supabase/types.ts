@@ -25,6 +25,7 @@ export type Database = {
           name: string
           price_usd: number
           updated_at: string
+          voltage: number | null
           wattage: number
           weight_kg: number
           width_cm: number
@@ -39,6 +40,7 @@ export type Database = {
           name: string
           price_usd: number
           updated_at?: string
+          voltage?: number | null
           wattage: number
           weight_kg: number
           width_cm: number
@@ -53,6 +55,7 @@ export type Database = {
           name?: string
           price_usd?: number
           updated_at?: string
+          voltage?: number | null
           wattage?: number
           weight_kg?: number
           width_cm?: number

@@ -12,6 +12,7 @@ interface SolarPanel {
   width_cm: number;
   weight_kg: number;
   wattage: number;
+  voltage: number;
   price_usd: number;
 }
 
@@ -68,6 +69,15 @@ export const ComparisonTable = ({ panels, onRemove }: ComparisonTableProps) => {
                   <Badge variant="secondary" className="text-base">
                     {panel.wattage}W
                   </Badge>
+                </TableCell>
+              ))}
+            </TableRow>
+
+            <TableRow>
+              <TableCell className="font-medium">Voltage</TableCell>
+              {panels.map((panel) => (
+                <TableCell key={panel.id} className="text-center font-medium">
+                  {panel.voltage}V
                 </TableCell>
               ))}
             </TableRow>

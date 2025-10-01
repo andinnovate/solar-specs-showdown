@@ -11,6 +11,7 @@ interface SolarPanel {
   width_cm: number;
   weight_kg: number;
   wattage: number;
+  voltage: number;
   price_usd: number;
   description?: string;
   image_url?: string;
@@ -61,6 +62,12 @@ export const SolarPanelCard = ({ panel, onCompare, isComparing }: SolarPanelCard
             <Weight className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Weight:</span>
             <span className="font-medium">{panel.weight_kg}kg</span>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm">
+            <Zap className="w-4 h-4 text-primary" />
+            <span className="text-muted-foreground">Voltage:</span>
+            <span className="font-medium">{panel.voltage}V</span>
           </div>
 
           <div className="flex items-center gap-2 text-sm">

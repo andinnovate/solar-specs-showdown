@@ -17,6 +17,7 @@ interface SolarPanel {
   width_cm: number;
   weight_kg: number;
   wattage: number;
+  voltage: number;
   price_usd: number;
   description?: string;
   image_url?: string;
@@ -29,8 +30,11 @@ const Index = () => {
   
   const [filters, setFilters] = useState({
     wattageRange: [0, 1000] as [number, number],
+    voltageRange: [0, 100] as [number, number],
     priceRange: [0, 1000] as [number, number],
     weightRange: [0, 100] as [number, number],
+    lengthRange: [0, 300] as [number, number],
+    widthRange: [0, 200] as [number, number],
   });
 
   useEffect(() => {
@@ -50,13 +54,19 @@ const Index = () => {
       // Set initial filter bounds based on data
       if (data && data.length > 0) {
         const wattages = data.map(p => p.wattage);
+        const voltages = data.map(p => p.voltage);
         const prices = data.map(p => p.price_usd);
         const weights = data.map(p => p.weight_kg);
+        const lengths = data.map(p => p.length_cm);
+        const widths = data.map(p => p.width_cm);
         
         setFilters({
           wattageRange: [Math.min(...wattages), Math.max(...wattages)],
+          voltageRange: [Math.min(...voltages), Math.max(...voltages)],
           priceRange: [Math.min(...prices), Math.max(...prices)],
           weightRange: [Math.min(...weights), Math.max(...weights)],
+          lengthRange: [Math.min(...lengths), Math.max(...lengths)],
+          widthRange: [Math.min(...widths), Math.max(...widths)],
         });
       }
     } catch (error) {
@@ -71,8 +81,11 @@ const Index = () => {
     if (panels.length === 0) {
       return {
         wattage: { min: 0, max: 1000 },
+        voltage: { min: 0, max: 100 },
         price: { min: 0, max: 1000 },
         weight: { min: 0, max: 100 },
+        length: { min: 0, max: 300 },
+        width: { min: 0, max: 200 },
       };
     }
     
@@ -80,6 +93,10 @@ const Index = () => {
       wattage: {
         min: Math.min(...panels.map(p => p.wattage)),
         max: Math.max(...panels.map(p => p.wattage))
+      },
+      voltage: {
+        min: Math.min(...panels.map(p => p.voltage)),
+        max: Math.max(...panels.map(p => p.voltage))
       },
       price: {
         min: Math.min(...panels.map(p => p.price_usd)),
@@ -89,6 +106,14 @@ const Index = () => {
         min: Math.min(...panels.map(p => p.weight_kg)),
         max: Math.max(...panels.map(p => p.weight_kg))
       },
+      length: {
+        min: Math.min(...panels.map(p => p.length_cm)),
+        max: Math.max(...panels.map(p => p.length_cm))
+      },
+      width: {
+        min: Math.min(...panels.map(p => p.width_cm)),
+        max: Math.max(...panels.map(p => p.width_cm))
+      },
     };
   }, [panels]);
 
@@ -96,10 +121,16 @@ const Index = () => {
     return panels.filter(panel => 
       panel.wattage >= filters.wattageRange[0] &&
       panel.wattage <= filters.wattageRange[1] &&
+      panel.voltage >= filters.voltageRange[0] &&
+      panel.voltage <= filters.voltageRange[1] &&
       panel.price_usd >= filters.priceRange[0] &&
       panel.price_usd <= filters.priceRange[1] &&
       panel.weight_kg >= filters.weightRange[0] &&
-      panel.weight_kg <= filters.weightRange[1]
+      panel.weight_kg <= filters.weightRange[1] &&
+      panel.length_cm >= filters.lengthRange[0] &&
+      panel.length_cm <= filters.lengthRange[1] &&
+      panel.width_cm >= filters.widthRange[0] &&
+      panel.width_cm <= filters.widthRange[1]
     );
   }, [panels, filters]);
 
@@ -118,8 +149,11 @@ const Index = () => {
   const resetFilters = () => {
     setFilters({
       wattageRange: [bounds.wattage.min, bounds.wattage.max],
+      voltageRange: [bounds.voltage.min, bounds.voltage.max],
       priceRange: [bounds.price.min, bounds.price.max],
       weightRange: [bounds.weight.min, bounds.weight.max],
+      lengthRange: [bounds.length.min, bounds.length.max],
+      widthRange: [bounds.width.min, bounds.width.max],
     });
   };
 

@@ -7,13 +7,19 @@ import { RotateCcw } from "lucide-react";
 interface FilterPanelProps {
   filters: {
     wattageRange: [number, number];
+    voltageRange: [number, number];
     priceRange: [number, number];
     weightRange: [number, number];
+    lengthRange: [number, number];
+    widthRange: [number, number];
   };
   bounds: {
     wattage: { min: number; max: number };
+    voltage: { min: number; max: number };
     price: { min: number; max: number };
     weight: { min: number; max: number };
+    length: { min: number; max: number };
+    width: { min: number; max: number };
   };
   onFilterChange: (filters: FilterPanelProps['filters']) => void;
   onReset: () => void;
@@ -53,6 +59,25 @@ export const FilterPanel = ({ filters, bounds, onFilterChange, onReset }: Filter
 
         <div className="space-y-2">
           <Label className="flex justify-between">
+            <span>Voltage</span>
+            <span className="font-mono text-sm text-muted-foreground">
+              {filters.voltageRange[0]}V - {filters.voltageRange[1]}V
+            </span>
+          </Label>
+          <Slider
+            min={bounds.voltage.min}
+            max={bounds.voltage.max}
+            step={0.5}
+            value={filters.voltageRange}
+            onValueChange={(value) => 
+              onFilterChange({ ...filters, voltageRange: value as [number, number] })
+            }
+            className="py-4"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex justify-between">
             <span>Price (USD)</span>
             <span className="font-mono text-sm text-muted-foreground">
               ${filters.priceRange[0]} - ${filters.priceRange[1]}
@@ -84,6 +109,44 @@ export const FilterPanel = ({ filters, bounds, onFilterChange, onReset }: Filter
             value={filters.weightRange}
             onValueChange={(value) => 
               onFilterChange({ ...filters, weightRange: value as [number, number] })
+            }
+            className="py-4"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex justify-between">
+            <span>Length (cm)</span>
+            <span className="font-mono text-sm text-muted-foreground">
+              {filters.lengthRange[0]}cm - {filters.lengthRange[1]}cm
+            </span>
+          </Label>
+          <Slider
+            min={bounds.length.min}
+            max={bounds.length.max}
+            step={5}
+            value={filters.lengthRange}
+            onValueChange={(value) => 
+              onFilterChange({ ...filters, lengthRange: value as [number, number] })
+            }
+            className="py-4"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex justify-between">
+            <span>Width (cm)</span>
+            <span className="font-mono text-sm text-muted-foreground">
+              {filters.widthRange[0]}cm - {filters.widthRange[1]}cm
+            </span>
+          </Label>
+          <Slider
+            min={bounds.width.min}
+            max={bounds.width.max}
+            step={5}
+            value={filters.widthRange}
+            onValueChange={(value) => 
+              onFilterChange({ ...filters, widthRange: value as [number, number] })
             }
             className="py-4"
           />
