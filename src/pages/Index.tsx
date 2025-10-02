@@ -21,6 +21,7 @@ interface SolarPanel {
   price_usd: number;
   description?: string;
   image_url?: string;
+  web_url?: string | null;
 }
 
 const Index = () => {

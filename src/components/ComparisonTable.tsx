@@ -2,7 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import { X, ExternalLink } from "lucide-react";
 
 interface SolarPanel {
   id: string;
@@ -14,6 +14,7 @@ interface SolarPanel {
   wattage: number;
   voltage: number;
   price_usd: number;
+  web_url?: string | null;
 }
 
 interface ComparisonTableProps {
@@ -46,7 +47,20 @@ export const ComparisonTable = ({ panels, onRemove }: ComparisonTableProps) => {
               {panels.map((panel) => (
                 <TableHead key={panel.id} className="text-center min-w-[180px]">
                   <div className="space-y-1">
-                    <div className="font-bold">{panel.name}</div>
+                    <div className="flex items-center justify-center gap-2 font-bold">
+                      {panel.name}
+                      {panel.web_url && (
+                        <a 
+                          href={panel.web_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:text-primary/70 transition-colors"
+                          aria-label="View on Amazon"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground">{panel.manufacturer}</div>
                     <Button
                       variant="ghost"

@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calculator, Zap, Weight, Ruler } from "lucide-react";
+import { Calculator, Zap, Weight, Ruler, ExternalLink } from "lucide-react";
 
 interface SolarPanel {
   id: string;
@@ -15,6 +15,7 @@ interface SolarPanel {
   price_usd: number;
   description?: string;
   image_url?: string;
+  web_url?: string | null;
 }
 
 interface SolarPanelCardProps {
@@ -35,9 +36,22 @@ export const SolarPanelCard = ({ panel, onCompare, isComparing }: SolarPanelCard
       </div>
       
       <CardHeader>
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="text-xl">{panel.name}</CardTitle>
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-xl">{panel.name}</CardTitle>
+              {panel.web_url && (
+                <a 
+                  href={panel.web_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-primary/70 transition-colors"
+                  aria-label="View on Amazon"
+                >
+                  <ExternalLink size={18} />
+                </a>
+              )}
+            </div>
             <CardDescription>{panel.manufacturer}</CardDescription>
           </div>
           <Badge variant="secondary" className="text-lg font-bold">
