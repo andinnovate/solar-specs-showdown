@@ -39,6 +39,8 @@ const DB_FIELD_INFO = {
 } as const;
 
 export const CSVImporterComplete = () => {
+  console.log('CSVImporterComplete: Component rendering...');
+  
   const [currentStep, setCurrentStep] = useState<ImportStep>('upload');
   const [csvFile, setCSVFile] = useState<File | null>(null);
   const [csvHeaders, setCSVHeaders] = useState<string[]>([]);
@@ -49,6 +51,8 @@ export const CSVImporterComplete = () => {
   const [importProgress, setImportProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  
+  console.log('CSVImporterComplete: Current step:', currentStep);
 
   // Load existing panels from database
   useEffect(() => {
@@ -94,16 +98,24 @@ export const CSVImporterComplete = () => {
   }, []);
 
   const handleFileSelect = async (file: File) => {
+    console.log('CSVImporterComplete: handleFileSelect called with:', file.name);
     setError(null);
     setCSVFile(file);
     
     try {
+      console.log('CSVImporterComplete: Reading file content...');
       const content = await file.text();
+      console.log('CSVImporterComplete: File content length:', content.length);
+      
+      console.log('CSVImporterComplete: Parsing CSV...');
       const { headers, rows } = parseCSV(content);
+      console.log('CSVImporterComplete: Parsed headers:', headers);
+      console.log('CSVImporterComplete: Parsed rows count:', rows.length);
       
       setCSVHeaders(headers);
       setCSVRows(rows);
       
+      console.log('CSVImporterComplete: Starting auto-mapping...');
       // Auto-detect field mappings
       const autoMappings = [...fieldMappings];
       headers.forEach(csvHeader => {
@@ -111,27 +123,28 @@ export const CSVImporterComplete = () => {
         
         let matchedField: keyof typeof DB_FIELD_INFO | null = null;
         
-        if (lowerHeader.includes('name') || lowerHeader.includes('model')) {
+        // More specific matching for user's CSV format
+        if (lowerHeader === 'model' || lowerHeader.includes('name')) {
           matchedField = 'name';
-        } else if (lowerHeader.includes('manufacturer') || lowerHeader.includes('brand')) {
+        } else if (lowerHeader === 'brand' || lowerHeader.includes('manufacturer')) {
           matchedField = 'manufacturer';
-        } else if (lowerHeader.includes('length') || lowerHeader.includes('height')) {
+        } else if (lowerHeader === 'length' || lowerHeader.includes('height')) {
           matchedField = 'length_cm';
-        } else if (lowerHeader.includes('width')) {
+        } else if (lowerHeader === 'width') {
           matchedField = 'width_cm';
-        } else if (lowerHeader.includes('weight') || lowerHeader.includes('mass')) {
+        } else if (lowerHeader === 'weight' || lowerHeader.includes('mass')) {
           matchedField = 'weight_kg';
-        } else if (lowerHeader.includes('watt') || lowerHeader.includes('power')) {
+        } else if (lowerHeader === 'watts' || lowerHeader.includes('watt') || lowerHeader.includes('power')) {
           matchedField = 'wattage';
-        } else if (lowerHeader.includes('voltage') || lowerHeader.includes('volt')) {
+        } else if (lowerHeader === 'voltage' || lowerHeader.includes('volt')) {
           matchedField = 'voltage';
-        } else if (lowerHeader.includes('price') || lowerHeader.includes('cost') || lowerHeader.includes('dollar')) {
+        } else if (lowerHeader === 'price' || lowerHeader.includes('cost') || lowerHeader.includes('dollar')) {
           matchedField = 'price_usd';
         } else if (lowerHeader.includes('description') || lowerHeader.includes('desc')) {
           matchedField = 'description';
         } else if (lowerHeader.includes('image') && lowerHeader.includes('url')) {
           matchedField = 'image_url';
-        } else if (lowerHeader.includes('web') || lowerHeader.includes('product') || lowerHeader.includes('link')) {
+        } else if (lowerHeader === 'link' || lowerHeader.includes('web') || lowerHeader.includes('product')) {
           matchedField = 'web_url';
         }
 
@@ -143,11 +156,18 @@ export const CSVImporterComplete = () => {
         }
       });
 
+      console.log('CSVImporterComplete: Auto-mappings completed:', autoMappings);
       setFieldMappings(autoMappings);
+      
+      console.log('CSVImporterComplete: Setting step to mapping...');
       setCurrentStep('mapping');
       
+      console.log('CSVImporterComplete: Showing success toast...');
       toast.success(`Loaded CSV with ${rows.length} rows`);
+      
+      console.log('CSVImporterComplete: File processing completed successfully');
     } catch (err) {
+      console.error('CSVImporterComplete: Error in handleFileSelect:', err);
       setError(err instanceof Error ? err.message : 'Failed to parse CSV');
     }
   };
@@ -265,9 +285,10 @@ export const CSVImporterComplete = () => {
   };
 
   const updateMapping = (dbField: keyof typeof DB_FIELD_INFO, csvHeader: string) => {
+    const actualCsvHeader = csvHeader === "__NO_MAPPING__" ? "" : csvHeader;
     setFieldMappings(prev => prev.map(mapping => 
       mapping.dbField === dbField 
-        ? { ...mapping, csvHeader }
+        ? { ...mapping, csvHeader: actualCsvHeader }
         : mapping
     ));
   };
@@ -451,19 +472,21 @@ export const CSVImporterComplete = () => {
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={mapping.csvHeader || ''}
+                            value={mapping.csvHeader || '__NO_MAPPING__'}
                             onValueChange={(value) => updateMapping(mapping.dbField, value)}
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select CSV column..." />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">-- No mapping --</SelectItem>
-                              {csvHeaders.map(header => (
-                                <SelectItem key={header} value={header}>
-                                  {header}
-                                </SelectItem>
-                              ))}
+                              <SelectItem value="__NO_MAPPING__">-- No mapping --</SelectItem>
+                              {csvHeaders
+                                .filter(header => header && header.trim().length > 0)
+                                .map(header => (
+                                  <SelectItem key={header} value={header}>
+                                    {header}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </TableCell>

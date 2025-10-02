@@ -98,21 +98,37 @@ export function parseCSV(content: string): { headers: string[]; rows: CSVRow[] }
       return result;
     };
 
-    const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
+    const rawHeaders = parseCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim());
+    
+    // Filter out empty headers and keep track of valid column indices
+    const validColumnIndices: number[] = [];
+    const headers: string[] = [];
+    
+    rawHeaders.forEach((header, index) => {
+      if (header && header.length > 0) {
+        headers.push(header);
+        validColumnIndices.push(index);
+      }
+    });
+    
+    console.log('Filtered headers:', headers);
+    console.log('Valid column indices:', validColumnIndices);
+    
     const rows: CSVRow[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const values = parseCSVLine(lines[i]).map(v => v.replace(/^"|"$/g, ''));
+      const line = lines[i].trim();
+      if (!line) continue; // Skip empty lines
       
-      if (values.length !== headers.length) {
-        console.warn(`Row ${i + 1} has ${values.length} values but expected ${headers.length}`);
-        continue;
-      }
-
+      const allValues = parseCSVLine(line).map(v => v.replace(/^"|"$/g, '').trim());
+      
+      // Only use values from valid column indices
       const row: CSVRow = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index] || '';
+      headers.forEach((header, headerIndex) => {
+        const valueIndex = validColumnIndices[headerIndex];
+        row[header] = allValues[valueIndex] || '';
       });
+      
       rows.push(row);
     }
 

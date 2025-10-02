@@ -101,9 +101,10 @@ export const FieldMappingInterface = ({
   }, [csvHeaders, fieldMappings, sampleRow]);
 
   const updateMapping = (dbField: keyof typeof DB_FIELD_INFO, csvHeader: string) => {
+    const actualCsvHeader = csvHeader === "__NO_MAPPING__" ? "" : csvHeader;
     setMappings(prev => prev.map(mapping => 
       mapping.dbField === dbField 
-        ? { ...mapping, csvHeader }
+        ? { ...mapping, csvHeader: actualCsvHeader }
         : mapping
     ));
   };
@@ -199,19 +200,21 @@ export const FieldMappingInterface = ({
                       </TableCell>
                       <TableCell>
                         <Select
-                          value={mapping.csvHeader || ''}
+                          value={mapping.csvHeader || '__NO_MAPPING__'}
                           onValueChange={(value) => updateMapping(mapping.dbField, value)}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select CSV column..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">-- No mapping --</SelectItem>
-                            {csvHeaders.map(header => (
-                              <SelectItem key={header} value={header}>
-                                {header}
-                              </SelectItem>
-                            ))}
+                            <SelectItem value="__NO_MAPPING__">-- No mapping --</SelectItem>
+                            {csvHeaders
+                              .filter(header => header && header.trim().length > 0)
+                              .map(header => (
+                                <SelectItem key={header} value={header}>
+                                  {header}
+                                </SelectItem>
+                              ))}
                           </SelectContent>
                         </Select>
                       </TableCell>
