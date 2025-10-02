@@ -283,6 +283,7 @@ export const CSVImporterComplete = () => {
         updatedPanels: updatedPanels.length
       });
       
+      
       let completed = 0;
       const total = newPanels.length + updatedPanels.length;
       
@@ -291,19 +292,32 @@ export const CSVImporterComplete = () => {
         console.log('Preparing to insert panels:', newPanels.length);
         
         const panelsToInsert = newPanels.map(p => {
-          const insertData = {
-            name: p.name,
-            manufacturer: p.manufacturer,
-            length_cm: Number(p.length_cm),
-            width_cm: Number(p.width_cm),
-            weight_kg: Number(p.weight_kg),
-            wattage: Number(p.wattage),
-            voltage: p.voltage ? Number(p.voltage) : null,
-            price_usd: Number(p.price_usd),
-            description: p.description || null,
-            image_url: p.image_url || null,
-            web_url: p.web_url || null
-          };
+          // Only include valid database columns, filter out any unmapped/extra fields
+          const insertData: any = {};
+          
+          // Define valid database columns
+          const validColumns = [
+            'name', 'manufacturer', 'length_cm', 'width_cm', 'weight_kg', 
+            'wattage', 'voltage', 'price_usd', 'description', 'image_url', 'web_url'
+          ];
+          
+          // Only include fields that exist in the database schema
+          validColumns.forEach(column => {
+            if (p.hasOwnProperty(column) && p[column] !== undefined) {
+              if (column === 'voltage' && p[column]) {
+                insertData[column] = Number(p[column]);
+              } else if (['length_cm', 'width_cm', 'weight_kg', 'price_usd'].includes(column)) {
+                insertData[column] = Number(p[column]);
+              } else if (column === 'wattage') {
+                // Wattage must be an integer in the database
+                insertData[column] = Math.round(Number(p[column]));
+              } else if (['description', 'image_url', 'web_url'].includes(column)) {
+                insertData[column] = p[column] || null;
+              } else {
+                insertData[column] = p[column];
+              }
+            }
+          });
           
           console.log('Panel data to insert:', insertData);
           
@@ -312,10 +326,12 @@ export const CSVImporterComplete = () => {
             throw new Error(`Panel missing required fields: name="${insertData.name}", manufacturer="${insertData.manufacturer}"`);
           }
           
-          // Validate numeric fields
-          if (isNaN(insertData.length_cm) || isNaN(insertData.width_cm) || isNaN(insertData.weight_kg) || 
-              isNaN(insertData.wattage) || isNaN(insertData.price_usd)) {
-            throw new Error(`Panel has invalid numeric values: ${JSON.stringify(insertData)}`);
+          // Validate numeric fields (only check fields that exist)
+          const numericFields = ['length_cm', 'width_cm', 'weight_kg', 'wattage', 'price_usd'];
+          for (const field of numericFields) {
+            if (insertData.hasOwnProperty(field) && isNaN(insertData[field])) {
+              throw new Error(`Panel has invalid ${field}: ${insertData[field]}`);
+            }
           }
           
           return insertData;

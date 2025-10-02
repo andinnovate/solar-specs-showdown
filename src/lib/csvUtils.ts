@@ -23,7 +23,7 @@ export interface ProcessedPanel extends Omit<SolarPanelInsert, 'id' | 'created_a
 // Field mapping configuration
 export interface FieldMapping {
   csvHeader: string;
-  dbField: keyof SolarPanelInsert;
+  dbField: keyof Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'>;
   unit?: string;
   selectedUnit?: string; // User-selected unit for conversion
   required: boolean;
@@ -211,7 +211,7 @@ export function convertValue(
   }
 
   const conversions = UNIT_CONVERSIONS[fieldType];
-  const converter = conversions[fromUnit as keyof typeof conversions];
+  const converter = conversions[fromUnit as keyof typeof conversions] as ((value: number) => number) | undefined;
   
   if (!converter) {
     console.warn(`Unknown unit "${fromUnit}" for ${fieldType}, using value as-is`);
@@ -295,8 +295,14 @@ export function calculateChanges(
 ): Partial<SolarPanelRow> {
   const changes: Partial<SolarPanelRow> = {};
 
-  (Object.keys(updated) as Array<keyof typeof updated>).forEach(key => {
-    if (key in existing && existing[key] !== updated[key]) {
+  // Only compare valid database columns, ignore unmapped CSV fields
+  const validColumns = [
+    'name', 'manufacturer', 'length_cm', 'width_cm', 'weight_kg', 
+    'wattage', 'voltage', 'price_usd', 'description', 'image_url', 'web_url'
+  ];
+
+  validColumns.forEach(key => {
+    if (key in existing && key in updated && existing[key] !== updated[key]) {
       (changes as any)[key] = updated[key];
     }
   });
