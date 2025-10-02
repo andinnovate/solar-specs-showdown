@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, FileText, AlertCircle, CheckCircle, ArrowRight, Plus, Edit } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle, ArrowRight, Plus, Edit, ChevronDown, ChevronRight, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { 
@@ -54,6 +54,7 @@ export const CSVImporterComplete = () => {
   const [importProgress, setImportProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   
   console.log('CSVImporterComplete: Current step:', currentStep);
 
@@ -206,7 +207,8 @@ export const CSVImporterComplete = () => {
     try {
       const processed: ProcessedPanel[] = [];
       
-      for (const csvRow of csvRows) {
+      for (let i = 0; i < csvRows.length; i++) {
+        const csvRow = csvRows[i];
         try {
           const processedData = processCSVRow(csvRow, fieldMappings);
           const matchedPanel = findMatchingPanel(processedData, existingPanels);
@@ -216,23 +218,49 @@ export const CSVImporterComplete = () => {
             originalData: csvRow,
             matchedPanel,
             isUpdate: !!matchedPanel,
-            changes: matchedPanel ? calculateChanges(matchedPanel, processedData) : undefined
+            changes: matchedPanel ? calculateChanges(matchedPanel, processedData) : undefined,
+            hasError: false,
+            rowIndex: i + 2 // +2 because row 1 is header, and we want 1-based indexing
           };
           
           processed.push(processedPanel);
         } catch (err) {
-          console.error(`Error processing row:`, csvRow, err);
-          toast.error(`Error processing row with name: ${csvRow.name || 'unknown'}`);
+          console.error(`Error processing row ${i + 2}:`, csvRow, err);
+          
+          // Create an error panel entry
+          const errorPanel: ProcessedPanel = {
+            // Provide minimal required fields with placeholder values
+            name: csvRow.name || csvRow.model || `Row ${i + 2}`,
+            manufacturer: csvRow.manufacturer || csvRow.brand || 'Unknown',
+            length_cm: 0,
+            width_cm: 0,
+            weight_kg: 0,
+            wattage: 0,
+            price_usd: 0,
+            originalData: csvRow,
+            isUpdate: false,
+            hasError: true,
+            errorMessage: err instanceof Error ? err.message : 'Processing error',
+            rowIndex: i + 2
+          };
+          
+          processed.push(errorPanel);
         }
       }
       
       setProcessedPanels(processed);
       setCurrentStep('preview');
       
-      const newPanels = processed.filter(p => !p.isUpdate);
-      const updatedPanels = processed.filter(p => p.isUpdate);
+      const validPanels = processed.filter(p => !p.hasError);
+      const errorPanels = processed.filter(p => p.hasError);
+      const newPanels = validPanels.filter(p => !p.isUpdate);
+      const updatedPanels = validPanels.filter(p => p.isUpdate);
       
-      toast.success(`Processed ${processed.length} panels: ${newPanels.length} new, ${updatedPanels.length} updates`);
+      if (errorPanels.length > 0) {
+        toast.error(`${errorPanels.length} rows have validation errors. Review before importing.`);
+      }
+      
+      toast.success(`Processed ${processed.length} rows: ${newPanels.length} new, ${updatedPanels.length} updates, ${errorPanels.length} errors`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process CSV data');
     }
@@ -243,31 +271,75 @@ export const CSVImporterComplete = () => {
     setImportProgress(0);
     
     try {
-      const newPanels = processedPanels.filter(p => !p.isUpdate);
-      const updatedPanels = processedPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length > 0);
+      // Only process valid panels (no errors)
+      const validPanels = processedPanels.filter(p => !p.hasError);
+      const newPanels = validPanels.filter(p => !p.isUpdate);
+      const updatedPanels = validPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length > 0);
+      
+      console.log('Import summary:', {
+        totalProcessed: processedPanels.length,
+        validPanels: validPanels.length,
+        newPanels: newPanels.length,
+        updatedPanels: updatedPanels.length
+      });
       
       let completed = 0;
       const total = newPanels.length + updatedPanels.length;
       
       // Insert new panels
       if (newPanels.length > 0) {
-        const { error: insertError } = await supabase
-          .from('solar_panels')
-          .insert(newPanels.map(p => ({
+        console.log('Preparing to insert panels:', newPanels.length);
+        
+        const panelsToInsert = newPanels.map(p => {
+          const insertData = {
             name: p.name,
             manufacturer: p.manufacturer,
-            length_cm: p.length_cm,
-            width_cm: p.width_cm,
-            weight_kg: p.weight_kg,
-            wattage: p.wattage,
-            voltage: p.voltage,
-            price_usd: p.price_usd,
-            description: p.description,
-            image_url: p.image_url,
-            web_url: p.web_url
-          })));
+            length_cm: Number(p.length_cm),
+            width_cm: Number(p.width_cm),
+            weight_kg: Number(p.weight_kg),
+            wattage: Number(p.wattage),
+            voltage: p.voltage ? Number(p.voltage) : null,
+            price_usd: Number(p.price_usd),
+            description: p.description || null,
+            image_url: p.image_url || null,
+            web_url: p.web_url || null
+          };
+          
+          console.log('Panel data to insert:', insertData);
+          
+          // Validate required fields
+          if (!insertData.name || !insertData.manufacturer) {
+            throw new Error(`Panel missing required fields: name="${insertData.name}", manufacturer="${insertData.manufacturer}"`);
+          }
+          
+          // Validate numeric fields
+          if (isNaN(insertData.length_cm) || isNaN(insertData.width_cm) || isNaN(insertData.weight_kg) || 
+              isNaN(insertData.wattage) || isNaN(insertData.price_usd)) {
+            throw new Error(`Panel has invalid numeric values: ${JSON.stringify(insertData)}`);
+          }
+          
+          return insertData;
+        });
         
-        if (insertError) throw insertError;
+        console.log('Final insert payload:', panelsToInsert);
+        
+        const { data: insertedData, error: insertError } = await supabase
+          .from('solar_panels')
+          .insert(panelsToInsert)
+          .select();
+        
+        if (insertError) {
+          console.error('Supabase insert error:', insertError);
+          console.error('Error details:', {
+            message: insertError.message,
+            details: insertError.details,
+            hint: insertError.hint,
+            code: insertError.code
+          });
+          throw new Error(`Database insert failed: ${insertError.message}`);
+        }
+        
+        console.log('Successfully inserted panels:', insertedData);
         completed += newPanels.length;
         setImportProgress((completed / total) * 100);
       }
@@ -275,12 +347,20 @@ export const CSVImporterComplete = () => {
       // Update existing panels
       for (const panel of updatedPanels) {
         if (panel.matchedPanel && panel.changes && Object.keys(panel.changes).length > 0) {
-          const { error: updateError } = await supabase
+          console.log('Updating panel:', panel.matchedPanel.id, 'with changes:', panel.changes);
+          
+          const { data: updatedData, error: updateError } = await supabase
             .from('solar_panels')
             .update(panel.changes)
-            .eq('id', panel.matchedPanel.id);
+            .eq('id', panel.matchedPanel.id)
+            .select();
           
-          if (updateError) throw updateError;
+          if (updateError) {
+            console.error('Supabase update error:', updateError);
+            throw new Error(`Database update failed: ${updateError.message}`);
+          }
+          
+          console.log('Successfully updated panel:', updatedData);
           completed++;
           setImportProgress((completed / total) * 100);
         }
@@ -348,9 +428,11 @@ export const CSVImporterComplete = () => {
     }
   };
 
-  const newPanels = processedPanels.filter(p => !p.isUpdate);
-  const updatedPanels = processedPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length > 0);
-  const noChangePanels = processedPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length === 0);
+  const validPanels = processedPanels.filter(p => !p.hasError);
+  const errorPanels = processedPanels.filter(p => p.hasError);
+  const newPanels = validPanels.filter(p => !p.isUpdate);
+  const updatedPanels = validPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length > 0);
+  const noChangePanels = validPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length === 0);
 
   return (
     <div className="space-y-6">
@@ -607,7 +689,7 @@ export const CSVImporterComplete = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center gap-2">
                     <Plus className="w-5 h-5 text-green-600" />
@@ -634,14 +716,127 @@ export const CSVImporterComplete = () => {
                   <p className="text-2xl font-bold text-gray-600 mt-2">{noChangePanels.length}</p>
                   <p className="text-sm text-gray-700">Already up to date</p>
                 </div>
+
+                {errorPanels.length > 0 && (
+                  <div 
+                    className="p-4 bg-red-50 border border-red-200 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
+                    onClick={() => setShowErrorDetails(!showErrorDetails)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                      <span className="font-semibold text-red-800">Errors</span>
+                      {showErrorDetails ? (
+                        <ChevronDown className="w-4 h-4 text-red-600" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-red-600" />
+                      )}
+                    </div>
+                    <p className="text-2xl font-bold text-red-600 mt-2">{errorPanels.length}</p>
+                    <p className="text-sm text-red-700">Rows with validation errors</p>
+                    <p className="text-xs text-red-600 mt-1">Click to view details</p>
+                  </div>
+                )}
               </div>
+
+              {errorPanels.length > 0 && (
+                <div className="mt-4 space-y-4">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="flex items-center justify-between">
+                      <span>
+                        {errorPanels.length} rows have validation errors and will be skipped during import. 
+                        Only valid rows will be processed.
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowErrorDetails(!showErrorDetails)}
+                        className="ml-4 text-red-700 hover:text-red-800"
+                      >
+                        {showErrorDetails ? (
+                          <>
+                            <ChevronDown className="w-4 h-4 mr-1" />
+                            Hide Details
+                          </>
+                        ) : (
+                          <>
+                            <ChevronRight className="w-4 h-4 mr-1" />
+                            Show Details
+                          </>
+                        )}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+
+                  {showErrorDetails && (
+                    <Card className="border-red-200">
+                      <CardHeader>
+                        <CardTitle className="text-red-800 flex items-center gap-2">
+                          <AlertCircle className="w-5 h-5" />
+                          Validation Errors ({errorPanels.length})
+                        </CardTitle>
+                        <CardDescription>
+                          The following rows contain validation errors and will not be imported:
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {errorPanels.map((panel, index) => (
+                            <div key={index} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Badge variant="destructive" className="text-xs">
+                                      Row {panel.rowIndex}
+                                    </Badge>
+                                    <span className="font-medium text-red-800">
+                                      {panel.name || 'Unknown Panel'}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-red-700 mb-2">
+                                    <strong>Error:</strong> {panel.errorMessage}
+                                  </p>
+                                  <div className="text-xs text-red-600">
+                                    <strong>Original Data:</strong>
+                                    <div className="mt-1 font-mono bg-red-100 p-2 rounded text-xs overflow-x-auto">
+                                      {Object.entries(panel.originalData)
+                                        .filter(([key, value]) => value && value.trim() !== '')
+                                        .map(([key, value]) => `${key}: "${value}"`)
+                                        .join(', ') || 'No data available'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <h4 className="font-medium text-blue-800 mb-2">💡 How to fix these errors:</h4>
+                          <ul className="text-sm text-blue-700 space-y-1">
+                            <li>• <strong>Missing required fields:</strong> Add values for required columns (name, manufacturer, dimensions, wattage, price)</li>
+                            <li>• <strong>Invalid numbers:</strong> Ensure numeric fields contain valid numbers without extra text</li>
+                            <li>• <strong>Empty rows:</strong> Remove completely empty rows from your CSV</li>
+                            <li>• <strong>Formatting issues:</strong> Check for special characters or inconsistent data formats</li>
+                          </ul>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between mt-6 pt-4 border-t">
                 <Button variant="outline" onClick={resetImporter}>
                   Cancel Import
                 </Button>
-                <Button onClick={handleImport} className="bg-green-600 hover:bg-green-700">
-                  Import {newPanels.length + updatedPanels.length} Changes
+                <Button 
+                  onClick={handleImport} 
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={newPanels.length + updatedPanels.length === 0}
+                >
+                  Import {newPanels.length + updatedPanels.length} Valid Changes
+                  {errorPanels.length > 0 && ` (Skip ${errorPanels.length} Errors)`}
                 </Button>
               </div>
             </CardContent>

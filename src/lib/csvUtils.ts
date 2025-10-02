@@ -15,6 +15,9 @@ export interface ProcessedPanel extends Omit<SolarPanelInsert, 'id' | 'created_a
   matchedPanel?: SolarPanelRow;
   isUpdate: boolean;
   changes?: Partial<SolarPanelRow>;
+  hasError?: boolean;
+  errorMessage?: string;
+  rowIndex?: number;
 }
 
 // Field mapping configuration
