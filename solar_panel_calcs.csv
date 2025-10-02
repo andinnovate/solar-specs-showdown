@@ -1,14 +1,14 @@
-asin,Link,brand,model,price,Rating,Tech,Voltage,Pcs,watts,length,Width,weight,Watts per sqft,Watts per lb,Watts per ,,
-B07BMNGVV3,https://www.amazon.com/dp/B07BMNGVV3,Renogy,Flex 100,120.89,,,,1,100,43,22.9,5.3,14.6,18.9,0.8,,
-B082FCZ4MD,https://www.amazon.com/dp/B082FCZ4MD,Renogy,Flex 175,381.79,,,,1,175,59.2,26.5,6.2,16.1,28.2,0.5,,
-B0CNPHD4VY,https://www.amazon.com/dp/B0CNPHD4VY,Renogy,Portable 200,235.99,,,,1,200,100,21.1,17.6,13.6,11.4,0.8,,
-B0B6VG4KJJ,https://www.amazon.com/dp/B0B6VG4KJJ,Ecoflow,100W,180.00,,,,2,200,38.6,23.1,13.7,16.1,7.3,1.1,,
-B0BF4VHWJP,https://www.amazon.com/dp/B0BF4VHWJP,Renogy,Flex 200,263.19,,,12,1,200,63.2,29.5,10.8,15.4,18.5,0.8,,
-B0C9HMKCCR,https://www.amazon.com/dp/B0C9HMKCCR,ECO-WORTHY,100W,101.89,4.4,,12,2,200,35.24,23,14.6,17.8,6.8,2.0,,
-B08R5JWL74,https://www.amazon.com/dp/B08R5JWL74,,160W Portable,349.00,4.5,,12,1,160,61.8,26.8,15.4,13.9,10.4,0.5,,
-B0BFC5NY6M,https://www.amazon.com/dp/B0BFC5NY6M,Rich Solar,100W slim,119.99,4.6,,12,1,100,51.2,15.7,13.7,17.9,7.3,0.8,,
-B0D9NDX1Y3,https://www.amazon.com/dp/B0D9NDX1Y3,Rich Solar,130W slim,169.99,4.6,,12,1,130,65,15.7,17,18.3,7.6,0.8,,
-B08NDKHP9V,https://www.amazon.com/dp/B08NDKHP9V,Rich Solar,150W,149.99,4.6,,12,1,150,42.5,27.6,18,18.4,8.3,1.0,,
-B0851RPM1Q,https://www.amazon.com/dp/B0851RPM1Q,Rich Solar,200W,190.00,,,12,1,200,58.7,26.8,23.6,18.3,8.5,1.1,,
-B0D86FVXBD,https://www.amazon.com/dp/B0D86FVXBD,Rich Solar,220W,240.00,,,12,1,220,55.1,30,23.7,19.2,9.3,0.9,,
-B0BYFQQQTW,https://www.amazon.com/dp/B0BYFQQQTW,Rich Solar,250W,280.00,,,12,1,250,60.6,29.9,25.8,19.9,9.7,0.9,,
+asin,Link,brand,model,price,Rating,Tech,Voltage,Pcs,watts,length,Width,weight
+B07BMNGVV3,https://www.amazon.com/dp/B07BMNGVV3,Renogy,Flex 100,120.89,,,,1,100,43,22.9,5.3
+B082FCZ4MD,https://www.amazon.com/dp/B082FCZ4MD,Renogy,Flex 175,381.79,,,,1,175,59.2,26.5,6.2
+B0CNPHD4VY,https://www.amazon.com/dp/B0CNPHD4VY,Renogy,Portable 200,235.99,,,,1,200,100,21.1,17.6
+B0B6VG4KJJ,https://www.amazon.com/dp/B0B6VG4KJJ,Ecoflow,100W,180.00,,,,2,200,38.6,23.1,13.7
+B0BF4VHWJP,https://www.amazon.com/dp/B0BF4VHWJP,Renogy,Flex 200,263.19,,,12,1,200,63.2,29.5,10.8
+B0C9HMKCCR,https://www.amazon.com/dp/B0C9HMKCCR,ECO-WORTHY,100W,101.89,4.4,,12,2,200,35.24,23,14.6
+B08R5JWL74,https://www.amazon.com/dp/B08R5JWL74,Ecoflow,160W Portable,349.00,4.5,,12,1,160,61.8,26.8,15.4
+B0BFC5NY6M,https://www.amazon.com/dp/B0BFC5NY6M,Rich Solar,100W slim,119.99,4.6,,12,1,100,51.2,15.7,13.7
+B0D9NDX1Y3,https://www.amazon.com/dp/B0D9NDX1Y3,Rich Solar,130W slim,169.99,4.6,,12,1,130,65,15.7,17
+B08NDKHP9V,https://www.amazon.com/dp/B08NDKHP9V,Rich Solar,150W,149.99,4.6,,12,1,150,42.5,27.6,18
+B0851RPM1Q,https://www.amazon.com/dp/B0851RPM1Q,Rich Solar,200W,190.00,,,12,1,200,58.7,26.8,23.6
+B0D86FVXBD,https://www.amazon.com/dp/B0D86FVXBD,Rich Solar,220W,240.00,,,12,1,220,55.1,30,23.7
+B0BYFQQQTW,https://www.amazon.com/dp/B0BYFQQQTW,Rich Solar,250W,280.00,,,12,1,250,60.6,29.9,25.8
