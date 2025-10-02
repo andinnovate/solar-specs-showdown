@@ -35,6 +35,7 @@ export const ComparisonTable = ({ panels, onRemove }: ComparisonTableProps) => {
     pricePerWatt: (panel.price_usd / panel.wattage).toFixed(2),
     wattsPerKg: (panel.wattage / panel.weight_kg).toFixed(2),
     areaM2: ((panel.length_cm * panel.width_cm) / 10000).toFixed(2),
+    wattsPerSqM: (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0),
   });
 
   return (
@@ -154,6 +155,18 @@ export const ComparisonTable = ({ panels, onRemove }: ComparisonTableProps) => {
                 return (
                   <TableCell key={panel.id} className="text-center font-bold text-accent text-lg">
                     {metrics.wattsPerKg}W/kg
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+
+            <TableRow className="bg-accent/5">
+              <TableCell className="font-medium">Watts/m²</TableCell>
+              {panels.map((panel) => {
+                const metrics = calculateMetrics(panel);
+                return (
+                  <TableCell key={panel.id} className="text-center font-bold text-accent text-lg">
+                    {metrics.wattsPerSqM}W/m²
                   </TableCell>
                 );
               })}

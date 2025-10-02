@@ -36,6 +36,9 @@ const Index = () => {
     weightRange: [0, 100] as [number, number],
     lengthRange: [0, 300] as [number, number],
     widthRange: [0, 200] as [number, number],
+    pricePerWattRange: [0, 10] as [number, number],
+    wattsPerKgRange: [0, 100] as [number, number],
+    wattsPerSqMRange: [0, 300] as [number, number],
   });
 
   useEffect(() => {
@@ -60,6 +63,9 @@ const Index = () => {
         const weights = data.map(p => p.weight_kg);
         const lengths = data.map(p => p.length_cm);
         const widths = data.map(p => p.width_cm);
+        const pricePerWatts = data.map(p => p.price_usd / p.wattage);
+        const wattsPerKgs = data.map(p => p.wattage / p.weight_kg);
+        const wattsPerSqMs = data.map(p => p.wattage / ((p.length_cm * p.width_cm) / 10000));
         
         setFilters({
           wattageRange: [Math.min(...wattages), Math.max(...wattages)],
@@ -68,6 +74,9 @@ const Index = () => {
           weightRange: [Math.min(...weights), Math.max(...weights)],
           lengthRange: [Math.min(...lengths), Math.max(...lengths)],
           widthRange: [Math.min(...widths), Math.max(...widths)],
+          pricePerWattRange: [Math.min(...pricePerWatts), Math.max(...pricePerWatts)],
+          wattsPerKgRange: [Math.min(...wattsPerKgs), Math.max(...wattsPerKgs)],
+          wattsPerSqMRange: [Math.min(...wattsPerSqMs), Math.max(...wattsPerSqMs)],
         });
       }
     } catch (error) {
@@ -87,8 +96,15 @@ const Index = () => {
         weight: { min: 0, max: 100 },
         length: { min: 0, max: 300 },
         width: { min: 0, max: 200 },
+        pricePerWatt: { min: 0, max: 10 },
+        wattsPerKg: { min: 0, max: 100 },
+        wattsPerSqM: { min: 0, max: 300 },
       };
     }
+    
+    const pricePerWatts = panels.map(p => p.price_usd / p.wattage);
+    const wattsPerKgs = panels.map(p => p.wattage / p.weight_kg);
+    const wattsPerSqMs = panels.map(p => p.wattage / ((p.length_cm * p.width_cm) / 10000));
     
     return {
       wattage: {
@@ -115,24 +131,46 @@ const Index = () => {
         min: Math.min(...panels.map(p => p.width_cm)),
         max: Math.max(...panels.map(p => p.width_cm))
       },
+      pricePerWatt: {
+        min: Math.min(...pricePerWatts),
+        max: Math.max(...pricePerWatts)
+      },
+      wattsPerKg: {
+        min: Math.min(...wattsPerKgs),
+        max: Math.max(...wattsPerKgs)
+      },
+      wattsPerSqM: {
+        min: Math.min(...wattsPerSqMs),
+        max: Math.max(...wattsPerSqMs)
+      },
     };
   }, [panels]);
 
   const filteredPanels = useMemo(() => {
-    return panels.filter(panel => 
-      panel.wattage >= filters.wattageRange[0] &&
-      panel.wattage <= filters.wattageRange[1] &&
-      panel.voltage >= filters.voltageRange[0] &&
-      panel.voltage <= filters.voltageRange[1] &&
-      panel.price_usd >= filters.priceRange[0] &&
-      panel.price_usd <= filters.priceRange[1] &&
-      panel.weight_kg >= filters.weightRange[0] &&
-      panel.weight_kg <= filters.weightRange[1] &&
-      panel.length_cm >= filters.lengthRange[0] &&
-      panel.length_cm <= filters.lengthRange[1] &&
-      panel.width_cm >= filters.widthRange[0] &&
-      panel.width_cm <= filters.widthRange[1]
-    );
+    return panels.filter(panel => {
+      const pricePerWatt = panel.price_usd / panel.wattage;
+      const wattsPerKg = panel.wattage / panel.weight_kg;
+      const wattsPerSqM = panel.wattage / ((panel.length_cm * panel.width_cm) / 10000);
+      
+      return panel.wattage >= filters.wattageRange[0] &&
+        panel.wattage <= filters.wattageRange[1] &&
+        panel.voltage >= filters.voltageRange[0] &&
+        panel.voltage <= filters.voltageRange[1] &&
+        panel.price_usd >= filters.priceRange[0] &&
+        panel.price_usd <= filters.priceRange[1] &&
+        panel.weight_kg >= filters.weightRange[0] &&
+        panel.weight_kg <= filters.weightRange[1] &&
+        panel.length_cm >= filters.lengthRange[0] &&
+        panel.length_cm <= filters.lengthRange[1] &&
+        panel.width_cm >= filters.widthRange[0] &&
+        panel.width_cm <= filters.widthRange[1] &&
+        pricePerWatt >= filters.pricePerWattRange[0] &&
+        pricePerWatt <= filters.pricePerWattRange[1] &&
+        wattsPerKg >= filters.wattsPerKgRange[0] &&
+        wattsPerKg <= filters.wattsPerKgRange[1] &&
+        wattsPerSqM >= filters.wattsPerSqMRange[0] &&
+        wattsPerSqM <= filters.wattsPerSqMRange[1];
+    });
   }, [panels, filters]);
 
   const comparedPanels = useMemo(() => {
@@ -155,6 +193,9 @@ const Index = () => {
       weightRange: [bounds.weight.min, bounds.weight.max],
       lengthRange: [bounds.length.min, bounds.length.max],
       widthRange: [bounds.width.min, bounds.width.max],
+      pricePerWattRange: [bounds.pricePerWatt.min, bounds.pricePerWatt.max],
+      wattsPerKgRange: [bounds.wattsPerKg.min, bounds.wattsPerKg.max],
+      wattsPerSqMRange: [bounds.wattsPerSqM.min, bounds.wattsPerSqM.max],
     });
   };
 

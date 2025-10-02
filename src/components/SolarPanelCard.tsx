@@ -28,6 +28,7 @@ export const SolarPanelCard = ({ panel, onCompare, isComparing }: SolarPanelCard
   const pricePerWatt = (panel.price_usd / panel.wattage).toFixed(2);
   const wattsPerKg = (panel.wattage / panel.weight_kg).toFixed(2);
   const areaM2 = ((panel.length_cm * panel.width_cm) / 10000).toFixed(2);
+  const wattsPerSqM = (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0);
 
   return (
     <Card className="overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1">
@@ -94,6 +95,12 @@ export const SolarPanelCard = ({ panel, onCompare, isComparing }: SolarPanelCard
             <Zap className="w-4 h-4 text-accent" />
             <span className="text-muted-foreground">W/kg:</span>
             <span className="font-bold text-accent">{wattsPerKg}</span>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm col-span-2">
+            <Zap className="w-4 h-4 text-accent" />
+            <span className="text-muted-foreground">W/m²:</span>
+            <span className="font-bold text-accent">{wattsPerSqM}</span>
           </div>
         </div>
 

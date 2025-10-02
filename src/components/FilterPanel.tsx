@@ -12,6 +12,9 @@ interface FilterPanelProps {
     weightRange: [number, number];
     lengthRange: [number, number];
     widthRange: [number, number];
+    pricePerWattRange: [number, number];
+    wattsPerKgRange: [number, number];
+    wattsPerSqMRange: [number, number];
   };
   bounds: {
     wattage: { min: number; max: number };
@@ -20,6 +23,9 @@ interface FilterPanelProps {
     weight: { min: number; max: number };
     length: { min: number; max: number };
     width: { min: number; max: number };
+    pricePerWatt: { min: number; max: number };
+    wattsPerKg: { min: number; max: number };
+    wattsPerSqM: { min: number; max: number };
   };
   onFilterChange: (filters: FilterPanelProps['filters']) => void;
   onReset: () => void;
@@ -147,6 +153,63 @@ export const FilterPanel = ({ filters, bounds, onFilterChange, onReset }: Filter
             value={filters.widthRange}
             onValueChange={(value) => 
               onFilterChange({ ...filters, widthRange: value as [number, number] })
+            }
+            className="py-4"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex justify-between">
+            <span>$/W (USD per Watt)</span>
+            <span className="font-mono text-sm text-muted-foreground">
+              ${filters.pricePerWattRange[0].toFixed(2)} - ${filters.pricePerWattRange[1].toFixed(2)}
+            </span>
+          </Label>
+          <Slider
+            min={bounds.pricePerWatt.min}
+            max={bounds.pricePerWatt.max}
+            step={0.01}
+            value={filters.pricePerWattRange}
+            onValueChange={(value) => 
+              onFilterChange({ ...filters, pricePerWattRange: value as [number, number] })
+            }
+            className="py-4"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex justify-between">
+            <span>W/kg (Watts per kg)</span>
+            <span className="font-mono text-sm text-muted-foreground">
+              {filters.wattsPerKgRange[0].toFixed(1)} - {filters.wattsPerKgRange[1].toFixed(1)}
+            </span>
+          </Label>
+          <Slider
+            min={bounds.wattsPerKg.min}
+            max={bounds.wattsPerKg.max}
+            step={0.5}
+            value={filters.wattsPerKgRange}
+            onValueChange={(value) => 
+              onFilterChange({ ...filters, wattsPerKgRange: value as [number, number] })
+            }
+            className="py-4"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex justify-between">
+            <span>W/m² (Watts per m²)</span>
+            <span className="font-mono text-sm text-muted-foreground">
+              {filters.wattsPerSqMRange[0].toFixed(0)} - {filters.wattsPerSqMRange[1].toFixed(0)}
+            </span>
+          </Label>
+          <Slider
+            min={bounds.wattsPerSqM.min}
+            max={bounds.wattsPerSqM.max}
+            step={1}
+            value={filters.wattsPerSqMRange}
+            onValueChange={(value) => 
+              onFilterChange({ ...filters, wattsPerSqMRange: value as [number, number] })
             }
             className="py-4"
           />
