@@ -70,6 +70,25 @@ export const FilterPanel = ({ filters, bounds, onFilterChange, onReset }: Filter
 
         <div className="space-y-2">
           <Label className="flex justify-between">
+            <span>$/W (USD per Watt)</span>
+            <span className="font-mono text-sm text-muted-foreground">
+              ${filters.pricePerWattRange[0].toFixed(2)} - ${filters.pricePerWattRange[1].toFixed(2)}
+            </span>
+          </Label>
+          <Slider
+            min={bounds.pricePerWatt.min}
+            max={bounds.pricePerWatt.max}
+            step={0.01}
+            value={filters.pricePerWattRange}
+            onValueChange={(value) => 
+              onFilterChange({ ...filters, pricePerWattRange: value as [number, number] })
+            }
+            className="py-4"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex justify-between">
             <span>Length (cm)</span>
             <span className="font-mono text-sm text-muted-foreground">
               {filters.lengthRange[0]}cm - {filters.lengthRange[1]}cm
@@ -171,25 +190,6 @@ export const FilterPanel = ({ filters, bounds, onFilterChange, onReset }: Filter
                 value={filters.weightRange}
                 onValueChange={(value) => 
                   onFilterChange({ ...filters, weightRange: value as [number, number] })
-                }
-                className="py-4"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex justify-between">
-                <span>$/W (USD per Watt)</span>
-                <span className="font-mono text-sm text-muted-foreground">
-                  ${filters.pricePerWattRange[0].toFixed(2)} - ${filters.pricePerWattRange[1].toFixed(2)}
-                </span>
-              </Label>
-              <Slider
-                min={bounds.pricePerWatt.min}
-                max={bounds.pricePerWatt.max}
-                step={0.01}
-                value={filters.pricePerWattRange}
-                onValueChange={(value) => 
-                  onFilterChange({ ...filters, pricePerWattRange: value as [number, number] })
                 }
                 className="py-4"
               />
