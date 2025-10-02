@@ -1,0 +1,6 @@
+name,manufacturer,length_in,width_in,weight_lbs,wattage,voltage,price_dollars,description,web_url
+"SolarMax 420","SunTech Industries",68.5,40.2,45.2,420,42.1,299.99,"High-efficiency monocrystalline panel with PERC technology","https://www.amazon.com/dp/example420"
+"PowerPro 500","EliteEnergy",78.7,42.1,52.8,500,48.5,389.50,"Premium bifacial panel with superior low-light performance","https://www.amazon.com/dp/example500"
+"EcoPanel 350","GreenWatt Solutions",65.0,39.4,38.6,350,37.8,215.75,"Budget-friendly panel with reliable 25-year warranty","https://www.amazon.com/dp/example350"
+"UltraPower 480","VoltMax Corp",72.4,41.3,47.9,480,44.2,342.00,"Advanced half-cut cell technology for maximum efficiency","https://www.amazon.com/dp/example480"
+"FlexSolar 320","FlexWatt Inc",62.2,38.8,35.1,320,35.2,189.99,"Lightweight portable design perfect for RVs and boats","https://www.amazon.com/dp/example320"
