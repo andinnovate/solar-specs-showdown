@@ -4,7 +4,23 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { HistogramSlider } from "@/components/HistogramSlider";
 import { RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
+
+interface SolarPanel {
+  id: string;
+  name: string;
+  manufacturer: string;
+  length_cm: number;
+  width_cm: number;
+  weight_kg: number;
+  wattage: number;
+  voltage: number;
+  price_usd: number;
+  description?: string;
+  image_url?: string;
+  web_url?: string | null;
+}
 
 interface FilterPanelProps {
   filters: {
@@ -29,12 +45,24 @@ interface FilterPanelProps {
     wattsPerKg: { min: number; max: number };
     wattsPerSqM: { min: number; max: number };
   };
+  panels: SolarPanel[]; // Add panels data for histogram calculation
   onFilterChange: (filters: FilterPanelProps['filters']) => void;
   onReset: () => void;
 }
 
-export const FilterPanel = ({ filters, bounds, onFilterChange, onReset }: FilterPanelProps) => {
+export const FilterPanel = ({ filters, bounds, panels, onFilterChange, onReset }: FilterPanelProps) => {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
+
+  // Calculate derived data arrays for histograms
+  const priceData = panels.map(p => p.price_usd);
+  const pricePerWattData = panels.map(p => p.price_usd / p.wattage);
+  const lengthData = panels.map(p => p.length_cm);
+  const widthData = panels.map(p => p.width_cm);
+  const wattageData = panels.map(p => p.wattage);
+  const voltageData = panels.map(p => p.voltage);
+  const weightData = panels.map(p => p.weight_kg);
+  const wattsPerKgData = panels.map(p => p.wattage / p.weight_kg);
+  const wattsPerSqMData = panels.map(p => p.wattage / ((p.length_cm * p.width_cm) / 10000));
 
   return (
     <Card>
@@ -48,82 +76,52 @@ export const FilterPanel = ({ filters, bounds, onFilterChange, onReset }: Filter
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Primary Filters */}
-        <div className="space-y-2">
-          <Label className="flex justify-between">
-            <span>Price (USD)</span>
-            <span className="font-mono text-sm text-muted-foreground">
-              ${filters.priceRange[0]} - ${filters.priceRange[1]}
-            </span>
-          </Label>
-          <Slider
-            min={bounds.price.min}
-            max={bounds.price.max}
-            step={5}
-            value={filters.priceRange}
-            onValueChange={(value) => 
-              onFilterChange({ ...filters, priceRange: value as [number, number] })
-            }
-            className="py-4"
-          />
-        </div>
+        {/* Primary Filters with Histograms */}
+        <HistogramSlider
+          label="Price (USD)"
+          value={filters.priceRange}
+          min={bounds.price.min}
+          max={bounds.price.max}
+          step={5}
+          data={priceData}
+          unit=""
+          formatValue={(val) => `$${val}`}
+          onValueChange={(value) => onFilterChange({ ...filters, priceRange: value })}
+        />
 
-        <div className="space-y-2">
-          <Label className="flex justify-between">
-            <span>$/W (USD per Watt)</span>
-            <span className="font-mono text-sm text-muted-foreground">
-              ${filters.pricePerWattRange[0].toFixed(2)} - ${filters.pricePerWattRange[1].toFixed(2)}
-            </span>
-          </Label>
-          <Slider
-            min={bounds.pricePerWatt.min}
-            max={bounds.pricePerWatt.max}
-            step={0.01}
-            value={filters.pricePerWattRange}
-            onValueChange={(value) => 
-              onFilterChange({ ...filters, pricePerWattRange: value as [number, number] })
-            }
-            className="py-4"
-          />
-        </div>
+        <HistogramSlider
+          label="$/W (USD per Watt)"
+          value={filters.pricePerWattRange}
+          min={bounds.pricePerWatt.min}
+          max={bounds.pricePerWatt.max}
+          step={0.01}
+          data={pricePerWattData}
+          unit=""
+          formatValue={(val) => `$${val.toFixed(2)}`}
+          onValueChange={(value) => onFilterChange({ ...filters, pricePerWattRange: value })}
+        />
 
-        <div className="space-y-2">
-          <Label className="flex justify-between">
-            <span>Length (cm)</span>
-            <span className="font-mono text-sm text-muted-foreground">
-              {filters.lengthRange[0]}cm - {filters.lengthRange[1]}cm
-            </span>
-          </Label>
-          <Slider
-            min={bounds.length.min}
-            max={bounds.length.max}
-            step={5}
-            value={filters.lengthRange}
-            onValueChange={(value) => 
-              onFilterChange({ ...filters, lengthRange: value as [number, number] })
-            }
-            className="py-4"
-          />
-        </div>
+        <HistogramSlider
+          label="Length (cm)"
+          value={filters.lengthRange}
+          min={bounds.length.min}
+          max={bounds.length.max}
+          step={5}
+          data={lengthData}
+          unit="cm"
+          onValueChange={(value) => onFilterChange({ ...filters, lengthRange: value })}
+        />
 
-        <div className="space-y-2">
-          <Label className="flex justify-between">
-            <span>Width (cm)</span>
-            <span className="font-mono text-sm text-muted-foreground">
-              {filters.widthRange[0]}cm - {filters.widthRange[1]}cm
-            </span>
-          </Label>
-          <Slider
-            min={bounds.width.min}
-            max={bounds.width.max}
-            step={5}
-            value={filters.widthRange}
-            onValueChange={(value) => 
-              onFilterChange({ ...filters, widthRange: value as [number, number] })
-            }
-            className="py-4"
-          />
-        </div>
+        <HistogramSlider
+          label="Width (cm)"
+          value={filters.widthRange}
+          min={bounds.width.min}
+          max={bounds.width.max}
+          step={5}
+          data={widthData}
+          unit="cm"
+          onValueChange={(value) => onFilterChange({ ...filters, widthRange: value })}
+        />
 
         {/* More Filters Collapsible Section */}
         <Collapsible open={showMoreFilters} onOpenChange={setShowMoreFilters}>

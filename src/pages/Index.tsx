@@ -316,6 +316,7 @@ const Index = () => {
             <FilterPanel 
               filters={filters}
               bounds={bounds}
+              panels={panels}
               onFilterChange={setFilters}
               onReset={resetFilters}
             />
