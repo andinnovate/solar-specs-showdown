@@ -225,6 +225,11 @@ const Index = () => {
               </p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild>
+              <a href="/admin">Admin Panel</a>
+            </Button>
+          </div>
         </div>
       </header>
 
