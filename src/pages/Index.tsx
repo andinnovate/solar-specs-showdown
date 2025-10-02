@@ -6,7 +6,8 @@ import { ComparisonTable } from "@/components/ComparisonTable";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Sun, Grid, Table } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sun, Grid, Table, List, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 
 interface SolarPanel {
@@ -24,10 +25,15 @@ interface SolarPanel {
   web_url?: string | null;
 }
 
+type ViewMode = 'cards' | 'list';
+type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'wattage-asc' | 'wattage-desc' | 'efficiency-asc' | 'efficiency-desc' | 'value-asc' | 'value-desc';
+
 const Index = () => {
   const [panels, setPanels] = useState<SolarPanel[]>([]);
   const [loading, setLoading] = useState(true);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>('cards');
+  const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   
   const [filters, setFilters] = useState({
     wattageRange: [0, 1000] as [number, number],
@@ -173,6 +179,43 @@ const Index = () => {
     });
   }, [panels, filters]);
 
+  const sortedPanels = useMemo(() => {
+    const sorted = [...filteredPanels];
+    
+    switch (sortBy) {
+      case 'name-asc':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      case 'name-desc':
+        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+      case 'price-asc':
+        return sorted.sort((a, b) => a.price_usd - b.price_usd);
+      case 'price-desc':
+        return sorted.sort((a, b) => b.price_usd - a.price_usd);
+      case 'wattage-asc':
+        return sorted.sort((a, b) => a.wattage - b.wattage);
+      case 'wattage-desc':
+        return sorted.sort((a, b) => b.wattage - a.wattage);
+      case 'efficiency-asc':
+        return sorted.sort((a, b) => {
+          const effA = a.wattage / ((a.length_cm * a.width_cm) / 10000);
+          const effB = b.wattage / ((b.length_cm * b.width_cm) / 10000);
+          return effA - effB;
+        });
+      case 'efficiency-desc':
+        return sorted.sort((a, b) => {
+          const effA = a.wattage / ((a.length_cm * a.width_cm) / 10000);
+          const effB = b.wattage / ((b.length_cm * b.width_cm) / 10000);
+          return effB - effA;
+        });
+      case 'value-asc':
+        return sorted.sort((a, b) => (a.price_usd / a.wattage) - (b.price_usd / b.wattage));
+      case 'value-desc':
+        return sorted.sort((a, b) => (b.price_usd / b.wattage) - (a.price_usd / a.wattage));
+      default:
+        return sorted;
+    }
+  }, [filteredPanels, sortBy]);
+
   const comparedPanels = useMemo(() => {
     return panels.filter(p => compareIds.includes(p.id));
   }, [panels, compareIds]);
@@ -199,6 +242,37 @@ const Index = () => {
     });
   };
 
+  const getSortOptions = () => {
+    const allOptions = [
+      { value: 'name-asc', label: 'Name A-Z', category: 'basic' },
+      { value: 'name-desc', label: 'Name Z-A', category: 'basic' },
+      { value: 'price-asc', label: 'Price Low to High', category: 'price', highlighted: isFiltered('price') },
+      { value: 'price-desc', label: 'Price High to Low', category: 'price', highlighted: isFiltered('price') },
+      { value: 'wattage-asc', label: 'Wattage Low to High', category: 'specs', highlighted: isFiltered('wattage') },
+      { value: 'wattage-desc', label: 'Wattage High to Low', category: 'specs', highlighted: isFiltered('wattage') },
+      { value: 'efficiency-asc', label: 'Efficiency Low to High (W/m²)', category: 'efficiency', highlighted: isFiltered('efficiency') },
+      { value: 'efficiency-desc', label: 'Efficiency High to Low (W/m²)', category: 'efficiency', highlighted: isFiltered('efficiency') },
+      { value: 'value-asc', label: 'Best Value ($/W Low to High)', category: 'value', highlighted: isFiltered('value') },
+      { value: 'value-desc', label: 'Worst Value ($/W High to Low)', category: 'value', highlighted: isFiltered('value') },
+    ];
+    return allOptions;
+  };
+
+  const isFiltered = (type: string) => {
+    switch (type) {
+      case 'price':
+        return filters.priceRange[0] > bounds.price.min || filters.priceRange[1] < bounds.price.max;
+      case 'wattage':
+        return filters.wattageRange[0] > bounds.wattage.min || filters.wattageRange[1] < bounds.wattage.max;
+      case 'efficiency':
+        return filters.wattsPerSqMRange[0] > bounds.wattsPerSqM.min || filters.wattsPerSqMRange[1] < bounds.wattsPerSqM.max;
+      case 'value':
+        return filters.pricePerWattRange[0] > bounds.pricePerWatt.min || filters.pricePerWattRange[1] < bounds.pricePerWatt.max;
+      default:
+        return false;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -212,23 +286,25 @@ const Index = () => {
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-secondary">
-              <Sun className="w-8 h-8 text-white" />
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-secondary">
+                <Sun className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                  Solar Panel Comparison
+                </h1>
+                <p className="text-muted-foreground">
+                  Compare specs, efficiency, and value
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Solar Panel Comparison
-              </h1>
-              <p className="text-muted-foreground">
-                Compare specs, efficiency, and value
-              </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" asChild>
+                <a href="/admin">Admin Panel</a>
+              </Button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" asChild>
-              <a href="/admin">Admin Panel</a>
-            </Button>
           </div>
         </div>
       </header>
@@ -247,19 +323,61 @@ const Index = () => {
 
           {/* Main Content */}
           <div className="space-y-6">
-            {/* Stats Bar */}
-            <div className="flex items-center justify-between">
+            {/* Stats Bar with Controls */}
+            <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="text-sm text-muted-foreground">
-                Showing <span className="font-bold text-foreground">{filteredPanels.length}</span> of {panels.length} panels
+                Showing <span className="font-bold text-foreground">{sortedPanels.length}</span> of {panels.length} panels
               </div>
-              {compareIds.length > 0 && (
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCompareIds([])}
-                >
-                  Clear Comparison ({compareIds.length})
-                </Button>
-              )}
+              
+              <div className="flex items-center gap-3">
+                {/* Sort Dropdown */}
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                  <Select value={sortBy} onValueChange={(value: SortOption) => setSortBy(value)}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getSortOptions().map(option => (
+                        <SelectItem 
+                          key={option.value} 
+                          value={option.value}
+                          className={option.highlighted ? 'bg-primary/10 font-medium' : ''}
+                        >
+                          {option.highlighted && '⭐ '}{option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* View Toggle */}
+                <div className="flex items-center border rounded-lg p-1">
+                  <Button
+                    variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('cards')}
+                  >
+                    <Grid className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'list' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('list')}
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {compareIds.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setCompareIds([])}
+                  >
+                    Clear Comparison ({compareIds.length})
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Comparison Table */}
@@ -277,25 +395,87 @@ const Index = () => {
               </div>
             )}
 
-            {/* Panels Grid */}
+            {/* Panels Display */}
             <div className="space-y-2">
               <h2 className="text-xl font-bold flex items-center gap-2">
-                <Grid className="w-5 h-5" />
+                {viewMode === 'cards' ? <Grid className="w-5 h-5" /> : <List className="w-5 h-5" />}
                 All Panels
               </h2>
-              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {filteredPanels.map(panel => (
-                  <SolarPanelCard 
-                    key={panel.id}
-                    panel={panel}
-                    onCompare={handleCompare}
-                    isComparing={compareIds.includes(panel.id)}
-                  />
-                ))}
-              </div>
+              
+              {viewMode === 'cards' ? (
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {sortedPanels.map(panel => (
+                    <SolarPanelCard 
+                      key={panel.id}
+                      panel={panel}
+                      onCompare={handleCompare}
+                      isComparing={compareIds.includes(panel.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-background border rounded-lg overflow-hidden">
+                  {/* List Header */}
+                  <div className="grid grid-cols-12 gap-4 p-4 bg-muted/50 border-b font-medium text-sm">
+                    <div className="col-span-3">Panel</div>
+                    <div className="col-span-1 text-center">Wattage</div>
+                    <div className="col-span-1 text-center">Price</div>
+                    <div className="col-span-1 text-center">$/W</div>
+                    <div className="col-span-2 text-center">Dimensions (cm)</div>
+                    <div className="col-span-1 text-center">Weight</div>
+                    <div className="col-span-1 text-center">W/m²</div>
+                    <div className="col-span-2 text-center">Actions</div>
+                  </div>
+                  
+                  {/* List Items */}
+                  {sortedPanels.map((panel, index) => {
+                    const pricePerWatt = panel.price_usd / panel.wattage;
+                    const efficiency = panel.wattage / ((panel.length_cm * panel.width_cm) / 10000);
+                    const isComparing = compareIds.includes(panel.id);
+                    
+                    return (
+                      <div 
+                        key={panel.id} 
+                        className={`grid grid-cols-12 gap-4 p-4 border-b last:border-b-0 hover:bg-muted/20 transition-colors ${
+                          isComparing ? 'bg-primary/5' : ''
+                        }`}
+                      >
+                        <div className="col-span-3">
+                          <div className="font-medium">{panel.name}</div>
+                          <div className="text-sm text-muted-foreground">{panel.manufacturer}</div>
+                        </div>
+                        <div className="col-span-1 text-center font-mono">{panel.wattage}W</div>
+                        <div className="col-span-1 text-center font-mono">${panel.price_usd}</div>
+                        <div className="col-span-1 text-center font-mono">${pricePerWatt.toFixed(2)}</div>
+                        <div className="col-span-2 text-center font-mono text-sm">
+                          {panel.length_cm} × {panel.width_cm}
+                        </div>
+                        <div className="col-span-1 text-center font-mono">{panel.weight_kg}kg</div>
+                        <div className="col-span-1 text-center font-mono">{Math.round(efficiency)}</div>
+                        <div className="col-span-2 flex items-center justify-center gap-2">
+                          <Button
+                            size="sm"
+                            variant={isComparing ? "default" : "outline"}
+                            onClick={() => handleCompare(panel.id)}
+                          >
+                            {isComparing ? 'Remove' : 'Compare'}
+                          </Button>
+                          {panel.web_url && (
+                            <Button size="sm" variant="ghost" asChild>
+                              <a href={panel.web_url} target="_blank" rel="noopener noreferrer">
+                                View
+                              </a>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {filteredPanels.length === 0 && (
+            {sortedPanels.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
                 No panels match your filters. Try adjusting the filter ranges.
               </div>
