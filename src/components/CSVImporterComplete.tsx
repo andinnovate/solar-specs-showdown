@@ -15,7 +15,10 @@ import {
   processCSVRow, 
   findMatchingPanel, 
   calculateChanges,
+  convertValue,
   DEFAULT_FIELD_MAPPINGS,
+  getUnitOptionsForField,
+  getFieldType,
   type CSVRow,
   type ProcessedPanel,
   type FieldMapping,
@@ -152,6 +155,27 @@ export const CSVImporterComplete = () => {
           const existingMapping = autoMappings.find(m => m.dbField === matchedField);
           if (existingMapping) {
             existingMapping.csvHeader = csvHeader;
+            
+            // Auto-detect units based on header names
+            if (matchedField === 'length_cm' || matchedField === 'width_cm') {
+              if (lowerHeader.includes('inch') || lowerHeader.includes('in')) {
+                existingMapping.selectedUnit = 'in';
+              } else if (lowerHeader.includes('mm')) {
+                existingMapping.selectedUnit = 'mm';
+              } else {
+                existingMapping.selectedUnit = 'cm'; // default
+              }
+            } else if (matchedField === 'weight_kg') {
+              if (lowerHeader.includes('lb') || lowerHeader.includes('pound')) {
+                existingMapping.selectedUnit = 'lb';
+              } else if (lowerHeader.includes('gram') || lowerHeader.includes('g')) {
+                existingMapping.selectedUnit = 'g';
+              } else {
+                existingMapping.selectedUnit = 'kg'; // default
+              }
+            } else if (matchedField === 'price_usd') {
+              existingMapping.selectedUnit = '$'; // default
+            }
           }
         }
       });
@@ -289,6 +313,14 @@ export const CSVImporterComplete = () => {
     setFieldMappings(prev => prev.map(mapping => 
       mapping.dbField === dbField 
         ? { ...mapping, csvHeader: actualCsvHeader }
+        : mapping
+    ));
+  };
+
+  const updateUnitSelection = (dbField: keyof typeof DB_FIELD_INFO, selectedUnit: string) => {
+    setFieldMappings(prev => prev.map(mapping => 
+      mapping.dbField === dbField 
+        ? { ...mapping, selectedUnit }
         : mapping
     ));
   };
@@ -447,13 +479,32 @@ export const CSVImporterComplete = () => {
                   <TableRow>
                     <TableHead>Database Field</TableHead>
                     <TableHead>CSV Column</TableHead>
+                    <TableHead>Unit</TableHead>
                     <TableHead>Sample Value</TableHead>
+                    <TableHead>Converted Preview</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {fieldMappings.map((mapping) => {
                     const fieldInfo = DB_FIELD_INFO[mapping.dbField];
                     const sampleValue = mapping.csvHeader ? csvRows[0]?.[mapping.csvHeader] : '';
+                    const unitOptions = getUnitOptionsForField(mapping.dbField);
+                    const fieldType = getFieldType(mapping.dbField);
+                    
+                    // Calculate conversion preview
+                    let convertedPreview = '';
+                    if (sampleValue && mapping.selectedUnit && fieldType) {
+                      try {
+                        const numericValue = parseFloat(sampleValue.replace(/[^0-9.-]/g, ''));
+                        if (!isNaN(numericValue)) {
+                          const converted = convertValue(sampleValue, mapping.selectedUnit, fieldType);
+                          const targetUnit = fieldType === 'length' ? 'cm' : fieldType === 'weight' ? 'kg' : 'USD';
+                          convertedPreview = `${converted.toFixed(2)} ${targetUnit}`;
+                        }
+                      } catch (e) {
+                        convertedPreview = 'Invalid';
+                      }
+                    }
                     
                     return (
                       <TableRow key={mapping.dbField}>
@@ -491,9 +542,37 @@ export const CSVImporterComplete = () => {
                           </Select>
                         </TableCell>
                         <TableCell>
+                          {unitOptions.length > 0 ? (
+                            <Select
+                              value={mapping.selectedUnit || ''}
+                              onValueChange={(value) => updateUnitSelection(mapping.dbField, value)}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select unit..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {unitOptions.map(option => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <span className="text-sm font-mono bg-muted px-2 py-1 rounded">
                             {sampleValue || '—'}
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          {convertedPreview && (
+                            <span className="text-sm font-mono bg-green-50 px-2 py-1 rounded text-green-700">
+                              {convertedPreview}
+                            </span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

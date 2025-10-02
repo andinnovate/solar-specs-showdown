@@ -22,6 +22,7 @@ export interface FieldMapping {
   csvHeader: string;
   dbField: keyof SolarPanelInsert;
   unit?: string;
+  selectedUnit?: string; // User-selected unit for conversion
   required: boolean;
 }
 
@@ -51,6 +52,37 @@ export const UNIT_CONVERSIONS = {
     'dollars': (value: number) => value,
   }
 } as const;
+
+// Unit options for user selection
+export const UNIT_OPTIONS = {
+  length: [
+    { value: 'in', label: 'Inches (in)' },
+    { value: 'cm', label: 'Centimeters (cm)' },
+    { value: 'mm', label: 'Millimeters (mm)' }
+  ],
+  weight: [
+    { value: 'lb', label: 'Pounds (lb)' },
+    { value: 'kg', label: 'Kilograms (kg)' },
+    { value: 'g', label: 'Grams (g)' }
+  ],
+  price: [
+    { value: '$', label: 'US Dollars ($)' }
+  ]
+} as const;
+
+// Get field type for unit selection
+export function getFieldType(dbField: string): 'length' | 'weight' | 'price' | null {
+  if (dbField === 'length_cm' || dbField === 'width_cm') return 'length';
+  if (dbField === 'weight_kg') return 'weight';
+  if (dbField === 'price_usd') return 'price';
+  return null;
+}
+
+// Get unit options for a field
+export function getUnitOptionsForField(dbField: string) {
+  const fieldType = getFieldType(dbField);
+  return fieldType ? UNIT_OPTIONS[fieldType] : [];
+}
 
 // Default field mappings
 export const DEFAULT_FIELD_MAPPINGS: FieldMapping[] = [
@@ -207,14 +239,17 @@ export function processCSVRow(
 
     // Handle numeric fields with potential unit conversions
     if (['length_cm', 'width_cm'].includes(mapping.dbField)) {
-      const detectedUnit = detectUnit(csvValue, 'length');
-      processedValue = convertValue(csvValue, detectedUnit, 'length');
+      // Use selected unit if available, otherwise detect from value
+      const unitToUse = mapping.selectedUnit || detectUnit(csvValue, 'length');
+      processedValue = convertValue(csvValue, unitToUse, 'length');
     } else if (mapping.dbField === 'weight_kg') {
-      const detectedUnit = detectUnit(csvValue, 'weight');
-      processedValue = convertValue(csvValue, detectedUnit, 'weight');
+      // Use selected unit if available, otherwise detect from value
+      const unitToUse = mapping.selectedUnit || detectUnit(csvValue, 'weight');
+      processedValue = convertValue(csvValue, unitToUse, 'weight');
     } else if (mapping.dbField === 'price_usd') {
-      const detectedUnit = detectUnit(csvValue, 'price');
-      processedValue = convertValue(csvValue, detectedUnit, 'price');
+      // Use selected unit if available, otherwise detect from value
+      const unitToUse = mapping.selectedUnit || detectUnit(csvValue, 'price');
+      processedValue = convertValue(csvValue, unitToUse, 'price');
     } else if (['wattage', 'voltage'].includes(mapping.dbField)) {
       processedValue = parseFloat(processedValue);
       if (isNaN(processedValue)) {
