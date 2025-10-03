@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calculator, Zap, Weight, Ruler, ExternalLink } from "lucide-react";
+import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star } from "lucide-react";
 
 interface SolarPanel {
   id: string;
@@ -22,18 +22,59 @@ interface SolarPanelCardProps {
   panel: SolarPanel;
   onCompare?: (id: string) => void;
   isComparing?: boolean;
+  isHidden?: boolean;
+  isFavorite?: boolean;
+  onToggleHidden?: (id: string) => void;
+  onToggleFavorite?: (id: string) => void;
+  showUserActions?: boolean;
 }
 
-export const SolarPanelCard = ({ panel, onCompare, isComparing }: SolarPanelCardProps) => {
+export const SolarPanelCard = ({ 
+  panel, 
+  onCompare, 
+  isComparing, 
+  isHidden = false, 
+  isFavorite = false, 
+  onToggleHidden, 
+  onToggleFavorite, 
+  showUserActions = false 
+}: SolarPanelCardProps) => {
   const pricePerWatt = (panel.price_usd / panel.wattage).toFixed(2);
   const wattsPerKg = (panel.wattage / panel.weight_kg).toFixed(2);
   const areaM2 = ((panel.length_cm * panel.width_cm) / 10000).toFixed(2);
   const wattsPerSqM = (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0);
 
   return (
-    <Card className="overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1">
-      <div className="h-48 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center">
+    <Card className={`overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1 ${isHidden ? 'opacity-50' : ''}`}>
+      <div className="h-48 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center relative">
         <Zap className="w-20 h-20 text-primary/30" />
+        {isHidden && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+            <EyeOff className="w-12 h-12 text-muted-foreground" />
+          </div>
+        )}
+        {showUserActions && (
+          <div className="absolute top-2 right-2 flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 bg-background/80 hover:bg-background"
+              onClick={() => onToggleHidden?.(panel.id)}
+              title={isHidden ? "Show panel" : "Hide panel"}
+            >
+              {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 bg-background/80 hover:bg-background"
+              onClick={() => onToggleFavorite?.(panel.id)}
+              title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            >
+              <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+            </Button>
+          </div>
+        )}
       </div>
       
       <CardHeader>

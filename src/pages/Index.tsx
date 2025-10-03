@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sun, Grid, Table, List, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
+import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
 
 interface SolarPanel {
   id: string;
@@ -34,6 +35,7 @@ const Index = () => {
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
+  const [user, setUser] = useState<any>(null);
   
   const [filters, setFilters] = useState({
     wattageRange: [0, 1000] as [number, number],
@@ -45,10 +47,34 @@ const Index = () => {
     pricePerWattRange: [0, 10] as [number, number],
     wattsPerKgRange: [0, 100] as [number, number],
     wattsPerSqMRange: [0, 300] as [number, number],
+    showFavoritesOnly: false,
   });
+
+  // Initialize user preferences hook
+  const {
+    hiddenPanels,
+    favoritePanels,
+    loading: preferencesLoading,
+    togglePanelHidden,
+    togglePanelFavorite,
+    isPanelHidden,
+    isPanelFavorite,
+  } = useUserPanelPreferences(user?.id);
 
   useEffect(() => {
     loadPanels();
+    
+    // Check auth state
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const loadPanels = async () => {
@@ -83,6 +109,7 @@ const Index = () => {
           pricePerWattRange: [Math.min(...pricePerWatts), Math.max(...pricePerWatts)],
           wattsPerKgRange: [Math.min(...wattsPerKgs), Math.max(...wattsPerKgs)],
           wattsPerSqMRange: [Math.min(...wattsPerSqMs), Math.max(...wattsPerSqMs)],
+          showFavoritesOnly: false,
         });
       }
     } catch (error) {
@@ -154,6 +181,16 @@ const Index = () => {
 
   const filteredPanels = useMemo(() => {
     return panels.filter(panel => {
+      // Filter out hidden panels if user is logged in
+      if (user && isPanelHidden(panel.id)) {
+        return false;
+      }
+
+      // Filter for favorites only if enabled
+      if (filters.showFavoritesOnly && user && !isPanelFavorite(panel.id)) {
+        return false;
+      }
+
       const pricePerWatt = panel.price_usd / panel.wattage;
       const wattsPerKg = panel.wattage / panel.weight_kg;
       const wattsPerSqM = panel.wattage / ((panel.length_cm * panel.width_cm) / 10000);
@@ -177,7 +214,7 @@ const Index = () => {
         wattsPerSqM >= filters.wattsPerSqMRange[0] &&
         wattsPerSqM <= filters.wattsPerSqMRange[1];
     });
-  }, [panels, filters]);
+  }, [panels, filters, user, isPanelHidden, isPanelFavorite]);
 
   const sortedPanels = useMemo(() => {
     const sorted = [...filteredPanels];
@@ -239,6 +276,7 @@ const Index = () => {
       pricePerWattRange: [bounds.pricePerWatt.min, bounds.pricePerWatt.max],
       wattsPerKgRange: [bounds.wattsPerKg.min, bounds.wattsPerKg.max],
       wattsPerSqMRange: [bounds.wattsPerSqM.min, bounds.wattsPerSqM.max],
+      showFavoritesOnly: false,
     });
   };
 
@@ -317,6 +355,7 @@ const Index = () => {
               filters={filters}
               bounds={bounds}
               panels={panels}
+              favoritePanelIds={favoritePanels}
               onFilterChange={setFilters}
               onReset={resetFilters}
             />
@@ -411,6 +450,11 @@ const Index = () => {
                       panel={panel}
                       onCompare={handleCompare}
                       isComparing={compareIds.includes(panel.id)}
+                      isHidden={isPanelHidden(panel.id)}
+                      isFavorite={isPanelFavorite(panel.id)}
+                      onToggleHidden={togglePanelHidden}
+                      onToggleFavorite={togglePanelFavorite}
+                      showUserActions={!!user}
                     />
                   ))}
                 </div>

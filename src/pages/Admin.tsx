@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle } from "lucide-react";
+import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User } from "lucide-react";
 import { CSVImporterComplete } from "@/components/CSVImporterComplete";
+import { UserManagement } from "@/components/UserManagement";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -208,7 +209,7 @@ const Admin = () => {
           </div>
         ) : (
           <Tabs defaultValue="import" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="import" className="flex items-center gap-2">
                 <Upload className="w-4 h-4" />
                 CSV Import
@@ -220,6 +221,10 @@ const Admin = () => {
               <TabsTrigger value="logs" className="flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 Import Logs
+              </TabsTrigger>
+              <TabsTrigger value="user" className="flex items-center gap-2">
+                <User className="w-4 h-4" />
+                My Panels
               </TabsTrigger>
             </TabsList>
 
@@ -267,6 +272,10 @@ const Admin = () => {
                   <p className="text-muted-foreground">Import logging features coming soon...</p>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="user" className="space-y-6">
+              <UserManagement userId={user.id} />
             </TabsContent>
           </Tabs>
         )}

@@ -65,6 +65,76 @@ export type Database = {
         }
         Relationships: []
       }
+      user_panel_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          is_hidden: boolean
+          panel_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_hidden?: boolean
+          panel_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_hidden?: boolean
+          panel_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_panel_preferences_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "solar_panels"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      user_favorites: {
+        Row: {
+          created_at: string
+          id: string
+          is_favorite: boolean
+          panel_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_favorite?: boolean
+          panel_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_favorite?: boolean
+          panel_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_favorites_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "solar_panels"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -3,9 +3,10 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HistogramSlider } from "@/components/HistogramSlider";
-import { RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
+import { RotateCcw, ChevronDown, ChevronRight, Star } from "lucide-react";
 
 interface SolarPanel {
   id: string;
@@ -33,6 +34,7 @@ interface FilterPanelProps {
     pricePerWattRange: [number, number];
     wattsPerKgRange: [number, number];
     wattsPerSqMRange: [number, number];
+    showFavoritesOnly: boolean;
   };
   bounds: {
     wattage: { min: number; max: number };
@@ -46,11 +48,12 @@ interface FilterPanelProps {
     wattsPerSqM: { min: number; max: number };
   };
   panels: SolarPanel[]; // Add panels data for histogram calculation
+  favoritePanelIds?: Set<string>; // Add favorite panel IDs for filtering
   onFilterChange: (filters: FilterPanelProps['filters']) => void;
   onReset: () => void;
 }
 
-export const FilterPanel = ({ filters, bounds, panels, onFilterChange, onReset }: FilterPanelProps) => {
+export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, onFilterChange, onReset }: FilterPanelProps) => {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   // Calculate derived data arrays for histograms
@@ -76,6 +79,23 @@ export const FilterPanel = ({ filters, bounds, panels, onFilterChange, onReset }
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Favorites Filter */}
+        {favoritePanelIds && favoritePanelIds.size > 0 && (
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="showFavoritesOnly"
+              checked={filters.showFavoritesOnly}
+              onCheckedChange={(checked) => 
+                onFilterChange({ ...filters, showFavoritesOnly: checked as boolean })
+              }
+            />
+            <Label htmlFor="showFavoritesOnly" className="flex items-center gap-2 cursor-pointer">
+              <Star className="w-4 h-4" />
+              Show favorites only ({favoritePanelIds.size} panels)
+            </Label>
+          </div>
+        )}
+
         {/* Primary Filters with Histograms */}
         <HistogramSlider
           label="Price (USD)"
