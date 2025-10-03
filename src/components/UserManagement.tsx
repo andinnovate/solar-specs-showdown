@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, Star, Trash2, AlertCircle } from "lucide-react";
+import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/unitConversions";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -25,9 +26,10 @@ interface SolarPanel {
 
 interface UserManagementProps {
   userId: string;
+  unitSystem?: UnitSystem;
 }
 
-export const UserManagement = ({ userId }: UserManagementProps) => {
+export const UserManagement = ({ userId, unitSystem = 'metric' }: UserManagementProps) => {
   const [hiddenPanels, setHiddenPanels] = useState<SolarPanel[]>([]);
   const [favoritePanels, setFavoritePanels] = useState<SolarPanel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,6 +212,19 @@ export const UserManagement = ({ userId }: UserManagementProps) => {
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
               {favoritePanels.map(panel => (
                 <Card key={panel.id} className="overflow-hidden">
+                  {panel.image_url && (
+                    <div className="h-32 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center overflow-hidden">
+                      <img 
+                        src={panel.image_url} 
+                        alt={`${panel.name} by ${panel.manufacturer}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start">
                       <div>
@@ -233,7 +248,7 @@ export const UserManagement = ({ userId }: UserManagementProps) => {
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">Size:</span>
                       <span className="font-semibold">
-                        {((panel.length_cm * panel.width_cm) / 10000).toFixed(2)}m²
+                        {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
                       </span>
                     </div>
                     <Button
@@ -278,6 +293,19 @@ export const UserManagement = ({ userId }: UserManagementProps) => {
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
               {hiddenPanels.map(panel => (
                 <Card key={panel.id} className="overflow-hidden opacity-75">
+                  {panel.image_url && (
+                    <div className="h-32 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center overflow-hidden">
+                      <img 
+                        src={panel.image_url} 
+                        alt={`${panel.name} by ${panel.manufacturer}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start">
                       <div>
@@ -301,7 +329,7 @@ export const UserManagement = ({ userId }: UserManagementProps) => {
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">Size:</span>
                       <span className="font-semibold">
-                        {((panel.length_cm * panel.width_cm) / 10000).toFixed(2)}m²
+                        {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
                       </span>
                     </div>
                     <Button

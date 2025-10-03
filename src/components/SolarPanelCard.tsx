@@ -2,6 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/unitConversions";
 import { useState, useEffect } from "react";
 
 interface SolarPanel {
@@ -21,26 +23,28 @@ interface SolarPanel {
 
 interface SolarPanelCardProps {
   panel: SolarPanel;
-  onCompare?: (id: string) => void;
-  isComparing?: boolean;
+  onToggleSelection?: (id: string) => void;
+  isSelected?: boolean;
   isHidden?: boolean;
   isFavorite?: boolean;
   isFadingOut?: boolean;
   onToggleHidden?: (id: string) => void;
   onToggleFavorite?: (id: string) => void;
   showUserActions?: boolean;
+  unitSystem?: UnitSystem;
 }
 
 export const SolarPanelCard = ({ 
   panel, 
-  onCompare, 
-  isComparing, 
+  onToggleSelection, 
+  isSelected = false, 
   isHidden = false, 
   isFavorite = false, 
   isFadingOut = false,
   onToggleHidden, 
   onToggleFavorite, 
-  showUserActions = false 
+  showUserActions = false,
+  unitSystem = 'metric'
 }: SolarPanelCardProps) => {
   const pricePerWatt = (panel.price_usd / panel.wattage).toFixed(2);
   const wattsPerKg = (panel.wattage / panel.weight_kg).toFixed(2);
@@ -51,8 +55,22 @@ export const SolarPanelCard = ({
     <Card className={`overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${
       isFadingOut ? 'opacity-0 scale-95' : isHidden ? 'opacity-50' : 'opacity-100'
     }`}>
-      <div className="h-48 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center relative">
-        <Zap className="w-20 h-20 text-primary/30" />
+      <div className="h-48 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center relative overflow-hidden">
+        {panel.image_url ? (
+          <img 
+            src={panel.image_url} 
+            alt={`${panel.name} by ${panel.manufacturer}`}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              // Fallback to placeholder if image fails to load
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              target.parentElement?.classList.add('flex', 'items-center', 'justify-center');
+            }}
+          />
+        ) : (
+          <Zap className="w-20 h-20 text-primary/30" />
+        )}
         {isHidden && (
           <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
             <EyeOff className="w-12 h-12 text-muted-foreground" />
@@ -116,13 +134,13 @@ export const SolarPanelCard = ({
           <div className="flex items-center gap-2 text-sm">
             <Ruler className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Size:</span>
-            <span className="font-medium">{areaM2}m²</span>
+            <span className="font-medium">{formatArea(panel.length_cm, panel.width_cm, unitSystem)}</span>
           </div>
           
           <div className="flex items-center gap-2 text-sm">
             <Weight className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Weight:</span>
-            <span className="font-medium">{panel.weight_kg}kg</span>
+            <span className="font-medium">{formatWeight(panel.weight_kg, unitSystem)}</span>
           </div>
 
           <div className="flex items-center gap-2 text-sm">
@@ -145,7 +163,7 @@ export const SolarPanelCard = ({
 
           <div className="flex items-center gap-2 text-sm col-span-2">
             <Zap className="w-4 h-4 text-accent" />
-            <span className="text-muted-foreground">W/m²:</span>
+            <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'ft²' : 'm²'}:</span>
             <span className="font-bold text-accent">{wattsPerSqM}</span>
           </div>
         </div>
@@ -155,13 +173,19 @@ export const SolarPanelCard = ({
             <span className="text-2xl font-bold text-primary">
               ${panel.price_usd.toFixed(2)}
             </span>
-            <Button 
-              variant={isComparing ? "default" : "outline"}
-              size="sm"
-              onClick={() => onCompare?.(panel.id)}
-            >
-              {isComparing ? "✓ Selected" : "Compare"}
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id={`select-${panel.id}`}
+                checked={isSelected}
+                onCheckedChange={() => onToggleSelection?.(panel.id)}
+              />
+              <label 
+                htmlFor={`select-${panel.id}`} 
+                className="text-sm font-medium cursor-pointer"
+              >
+                Select for comparison
+              </label>
+            </div>
           </div>
         </div>
       </CardContent>

@@ -274,9 +274,9 @@ const Admin = () => {
               </Card>
             </TabsContent>
 
-            <TabsContent value="user" className="space-y-6">
-              <UserManagement userId={user.id} />
-            </TabsContent>
+        <TabsContent value="user" className="space-y-6">
+          <UserManagement userId={user.id} unitSystem="metric" />
+        </TabsContent>
           </Tabs>
         )}
       </main>

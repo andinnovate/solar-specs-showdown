@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X, ExternalLink } from "lucide-react";
+import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/unitConversions";
 
 interface SolarPanel {
   id: string;
@@ -20,9 +21,10 @@ interface SolarPanel {
 interface ComparisonTableProps {
   panels: SolarPanel[];
   onRemove: (id: string) => void;
+  unitSystem?: UnitSystem;
 }
 
-export const ComparisonTable = ({ panels, onRemove }: ComparisonTableProps) => {
+export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric' }: ComparisonTableProps) => {
   if (panels.length === 0) {
     return (
       <Card className="p-8 text-center text-muted-foreground">
@@ -122,28 +124,25 @@ export const ComparisonTable = ({ panels, onRemove }: ComparisonTableProps) => {
               <TableCell className="font-medium">Dimensions (L×W)</TableCell>
               {panels.map((panel) => (
                 <TableCell key={panel.id} className="text-center">
-                  {panel.length_cm}cm × {panel.width_cm}cm
+                  {formatDimensions(panel.length_cm, panel.width_cm, unitSystem)}
                 </TableCell>
               ))}
             </TableRow>
 
             <TableRow>
               <TableCell className="font-medium">Area</TableCell>
-              {panels.map((panel) => {
-                const metrics = calculateMetrics(panel);
-                return (
-                  <TableCell key={panel.id} className="text-center">
-                    {metrics.areaM2}m²
-                  </TableCell>
-                );
-              })}
+              {panels.map((panel) => (
+                <TableCell key={panel.id} className="text-center">
+                  {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
+                </TableCell>
+              ))}
             </TableRow>
 
             <TableRow>
               <TableCell className="font-medium">Weight</TableCell>
               {panels.map((panel) => (
                 <TableCell key={panel.id} className="text-center">
-                  {panel.weight_kg}kg
+                  {formatWeight(panel.weight_kg, unitSystem)}
                 </TableCell>
               ))}
             </TableRow>
@@ -161,12 +160,12 @@ export const ComparisonTable = ({ panels, onRemove }: ComparisonTableProps) => {
             </TableRow>
 
             <TableRow className="bg-accent/5">
-              <TableCell className="font-medium">Watts/m²</TableCell>
+              <TableCell className="font-medium">Watts/{unitSystem === 'imperial' ? 'ft²' : 'm²'}</TableCell>
               {panels.map((panel) => {
                 const metrics = calculateMetrics(panel);
                 return (
                   <TableCell key={panel.id} className="text-center font-bold text-accent text-lg">
-                    {metrics.wattsPerSqM}W/m²
+                    {metrics.wattsPerSqM}W/{unitSystem === 'imperial' ? 'ft²' : 'm²'}
                   </TableCell>
                 );
               })}

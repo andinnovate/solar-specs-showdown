@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HistogramSlider } from "@/components/HistogramSlider";
-import { RotateCcw, ChevronDown, ChevronRight, Star } from "lucide-react";
+import { RotateCcw, ChevronDown, ChevronRight, Star, Ruler } from "lucide-react";
+import { UnitSystem, cmToInches, kgToLbs } from "@/lib/unitConversions";
 
 interface SolarPanel {
   id: string;
@@ -49,21 +50,23 @@ interface FilterPanelProps {
   };
   panels: SolarPanel[]; // Add panels data for histogram calculation
   favoritePanelIds?: Set<string>; // Add favorite panel IDs for filtering
+  unitSystem: UnitSystem;
   onFilterChange: (filters: FilterPanelProps['filters']) => void;
   onReset: () => void;
+  onUnitSystemChange: (unitSystem: UnitSystem) => void;
 }
 
-export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, onFilterChange, onReset }: FilterPanelProps) => {
+export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSystem, onFilterChange, onReset, onUnitSystemChange }: FilterPanelProps) => {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   // Calculate derived data arrays for histograms
   const priceData = panels.map(p => p.price_usd);
   const pricePerWattData = panels.map(p => p.price_usd / p.wattage);
-  const lengthData = panels.map(p => p.length_cm);
-  const widthData = panels.map(p => p.width_cm);
+  const lengthData = panels.map(p => unitSystem === 'imperial' ? cmToInches(p.length_cm) : p.length_cm);
+  const widthData = panels.map(p => unitSystem === 'imperial' ? cmToInches(p.width_cm) : p.width_cm);
   const wattageData = panels.map(p => p.wattage);
   const voltageData = panels.map(p => p.voltage);
-  const weightData = panels.map(p => p.weight_kg);
+  const weightData = panels.map(p => unitSystem === 'imperial' ? kgToLbs(p.weight_kg) : p.weight_kg);
   const wattsPerKgData = panels.map(p => p.wattage / p.weight_kg);
   const wattsPerSqMData = panels.map(p => p.wattage / ((p.length_cm * p.width_cm) / 10000));
 
@@ -96,6 +99,32 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, onFilte
           </div>
         )}
 
+        {/* Unit System Toggle */}
+        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Ruler className="w-4 h-4" />
+            <span className="text-sm font-medium">Units</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={unitSystem === 'metric' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onUnitSystemChange('metric')}
+              className="text-xs px-3"
+            >
+              Metric
+            </Button>
+            <Button
+              variant={unitSystem === 'imperial' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onUnitSystemChange('imperial')}
+              className="text-xs px-3"
+            >
+              Imperial
+            </Button>
+          </div>
+        </div>
+
         {/* Primary Filters with Histograms */}
         <HistogramSlider
           label="Price (USD)"
@@ -122,24 +151,24 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, onFilte
         />
 
         <HistogramSlider
-          label="Length (cm)"
+          label={`Length (${unitSystem === 'imperial' ? 'in' : 'cm'})`}
           value={filters.lengthRange}
           min={bounds.length.min}
           max={bounds.length.max}
-          step={5}
+          step={unitSystem === 'imperial' ? 1 : 5}
           data={lengthData}
-          unit="cm"
+          unit={unitSystem === 'imperial' ? 'in' : 'cm'}
           onValueChange={(value) => onFilterChange({ ...filters, lengthRange: value })}
         />
 
         <HistogramSlider
-          label="Width (cm)"
+          label={`Width (${unitSystem === 'imperial' ? 'in' : 'cm'})`}
           value={filters.widthRange}
           min={bounds.width.min}
           max={bounds.width.max}
-          step={5}
+          step={unitSystem === 'imperial' ? 1 : 5}
           data={widthData}
-          unit="cm"
+          unit={unitSystem === 'imperial' ? 'in' : 'cm'}
           onValueChange={(value) => onFilterChange({ ...filters, widthRange: value })}
         />
 
@@ -194,24 +223,16 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, onFilte
               />
             </div>
 
-            <div className="space-y-2">
-              <Label className="flex justify-between">
-                <span>Weight (kg)</span>
-                <span className="font-mono text-sm text-muted-foreground">
-                  {filters.weightRange[0]}kg - {filters.weightRange[1]}kg
-                </span>
-              </Label>
-              <Slider
-                min={bounds.weight.min}
-                max={bounds.weight.max}
-                step={0.5}
-                value={filters.weightRange}
-                onValueChange={(value) => 
-                  onFilterChange({ ...filters, weightRange: value as [number, number] })
-                }
-                className="py-4"
-              />
-            </div>
+            <HistogramSlider
+              label={`Weight (${unitSystem === 'imperial' ? 'lbs' : 'kg'})`}
+              value={filters.weightRange}
+              min={bounds.weight.min}
+              max={bounds.weight.max}
+              step={unitSystem === 'imperial' ? 1 : 0.5}
+              data={weightData}
+              unit={unitSystem === 'imperial' ? 'lbs' : 'kg'}
+              onValueChange={(value) => onFilterChange({ ...filters, weightRange: value })}
+            />
 
             <div className="space-y-2">
               <Label className="flex justify-between">

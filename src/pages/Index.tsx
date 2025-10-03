@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Sun, Grid, Table, List, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
+import { UnitSystem, formatDimensions, formatWeight } from "@/lib/unitConversions";
 
 interface SolarPanel {
   id: string;
@@ -32,11 +34,13 @@ type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'watta
 const Index = () => {
   const [panels, setPanels] = useState<SolarPanel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showComparison, setShowComparison] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const [user, setUser] = useState<any>(null);
   const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('metric');
   
   const [filters, setFilters] = useState({
     wattageRange: [0, 1000] as [number, number],
@@ -255,15 +259,30 @@ const Index = () => {
   }, [filteredPanels, sortBy]);
 
   const comparedPanels = useMemo(() => {
-    return panels.filter(p => compareIds.includes(p.id));
-  }, [panels, compareIds]);
+    return panels.filter(p => selectedIds.has(p.id));
+  }, [panels, selectedIds]);
 
-  const handleCompare = (id: string) => {
-    setCompareIds(prev => 
-      prev.includes(id) 
-        ? prev.filter(i => i !== id)
-        : [...prev, id]
-    );
+  const handleToggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleStartComparison = () => {
+    if (selectedIds.size >= 2) {
+      setShowComparison(true);
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+    setShowComparison(false);
   };
 
   const handleHidePanel = (id: string) => {
@@ -368,14 +387,16 @@ const Index = () => {
         <div className="grid lg:grid-cols-[300px_1fr] gap-6">
           {/* Filters Sidebar */}
           <aside>
-            <FilterPanel 
-              filters={filters}
-              bounds={bounds}
-              panels={panels}
-              favoritePanelIds={favoritePanels}
-              onFilterChange={setFilters}
-              onReset={resetFilters}
-            />
+        <FilterPanel 
+          filters={filters}
+          bounds={bounds}
+          panels={panels}
+          favoritePanelIds={favoritePanels}
+          unitSystem={unitSystem}
+          onFilterChange={setFilters}
+          onReset={resetFilters}
+          onUnitSystemChange={setUnitSystem}
+        />
           </aside>
 
           {/* Main Content */}
@@ -384,6 +405,11 @@ const Index = () => {
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="text-sm text-muted-foreground">
                 Showing <span className="font-bold text-foreground">{sortedPanels.length}</span> of {panels.length} panels
+                {selectedIds.size > 0 && (
+                  <span className="ml-2 text-primary">
+                    • <span className="font-bold">{selectedIds.size}</span> selected
+                  </span>
+                )}
               </div>
               
               <div className="flex items-center gap-3">
@@ -426,19 +452,28 @@ const Index = () => {
                   </Button>
                 </div>
 
-                {compareIds.length > 0 && (
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setCompareIds([])}
-                  >
-                    Clear Comparison ({compareIds.length})
-                  </Button>
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="default" 
+                      onClick={handleStartComparison}
+                      disabled={selectedIds.size < 2}
+                    >
+                      Compare ({selectedIds.size})
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={handleClearSelection}
+                    >
+                      Clear Selection
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
 
             {/* Comparison Table */}
-            {compareIds.length > 0 && (
+            {showComparison && comparedPanels.length >= 2 && (
               <div className="space-y-2">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Table className="w-5 h-5" />
@@ -446,7 +481,14 @@ const Index = () => {
                 </h2>
                 <ComparisonTable 
                   panels={comparedPanels}
-                  onRemove={(id) => handleCompare(id)}
+                  onRemove={(id) => {
+                    setSelectedIds(prev => {
+                      const newSet = new Set(prev);
+                      newSet.delete(id);
+                      return newSet;
+                    });
+                  }}
+                  unitSystem={unitSystem}
                 />
                 <Separator className="my-6" />
               </div>
@@ -462,18 +504,19 @@ const Index = () => {
               {viewMode === 'cards' ? (
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {sortedPanels.map(panel => (
-                    <SolarPanelCard 
-                      key={panel.id}
-                      panel={panel}
-                      onCompare={handleCompare}
-                      isComparing={compareIds.includes(panel.id)}
-                      isHidden={isPanelHidden(panel.id)}
-                      isFavorite={isPanelFavorite(panel.id)}
-                      isFadingOut={fadingOutPanels.has(panel.id)}
-                      onToggleHidden={handleHidePanel}
-                      onToggleFavorite={togglePanelFavorite}
-                      showUserActions={!!user}
-                    />
+            <SolarPanelCard 
+              key={panel.id}
+              panel={panel}
+              onToggleSelection={handleToggleSelection}
+              isSelected={selectedIds.has(panel.id)}
+              isHidden={isPanelHidden(panel.id)}
+              isFavorite={isPanelFavorite(panel.id)}
+              isFadingOut={fadingOutPanels.has(panel.id)}
+              onToggleHidden={handleHidePanel}
+              onToggleFavorite={togglePanelFavorite}
+              showUserActions={!!user}
+              unitSystem={unitSystem}
+            />
                   ))}
                 </div>
               ) : (
@@ -484,7 +527,7 @@ const Index = () => {
                     <div className="col-span-1 text-center">Wattage</div>
                     <div className="col-span-1 text-center">Price</div>
                     <div className="col-span-1 text-center">$/W</div>
-                    <div className="col-span-2 text-center">Dimensions (cm)</div>
+                    <div className="col-span-2 text-center">Dimensions</div>
                     <div className="col-span-1 text-center">Weight</div>
                     <div className="col-span-1 text-center">W/m²</div>
                     <div className="col-span-2 text-center">Actions</div>
@@ -494,13 +537,13 @@ const Index = () => {
                   {sortedPanels.map((panel, index) => {
                     const pricePerWatt = panel.price_usd / panel.wattage;
                     const efficiency = panel.wattage / ((panel.length_cm * panel.width_cm) / 10000);
-                    const isComparing = compareIds.includes(panel.id);
+                    const isSelected = selectedIds.has(panel.id);
                     
                     return (
                       <div 
                         key={panel.id} 
                         className={`grid grid-cols-12 gap-4 p-4 border-b last:border-b-0 hover:bg-muted/20 transition-colors ${
-                          isComparing ? 'bg-primary/5' : ''
+                          selectedIds.has(panel.id) ? 'bg-primary/5' : ''
                         }`}
                       >
                         <div className="col-span-3">
@@ -511,18 +554,24 @@ const Index = () => {
                         <div className="col-span-1 text-center font-mono">${panel.price_usd}</div>
                         <div className="col-span-1 text-center font-mono">${pricePerWatt.toFixed(2)}</div>
                         <div className="col-span-2 text-center font-mono text-sm">
-                          {panel.length_cm} × {panel.width_cm}
+                          {formatDimensions(panel.length_cm, panel.width_cm, unitSystem)}
                         </div>
-                        <div className="col-span-1 text-center font-mono">{panel.weight_kg}kg</div>
+                        <div className="col-span-1 text-center font-mono">{formatWeight(panel.weight_kg, unitSystem)}</div>
                         <div className="col-span-1 text-center font-mono">{Math.round(efficiency)}</div>
                         <div className="col-span-2 flex items-center justify-center gap-2">
-                          <Button
-                            size="sm"
-                            variant={isComparing ? "default" : "outline"}
-                            onClick={() => handleCompare(panel.id)}
-                          >
-                            {isComparing ? 'Remove' : 'Compare'}
-                          </Button>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`list-select-${panel.id}`}
+                              checked={isSelected}
+                              onCheckedChange={() => handleToggleSelection(panel.id)}
+                            />
+                            <label 
+                              htmlFor={`list-select-${panel.id}`} 
+                              className="text-xs cursor-pointer"
+                            >
+                              Select
+                            </label>
+                          </div>
                           {panel.web_url && (
                             <Button size="sm" variant="ghost" asChild>
                               <a href={panel.web_url} target="_blank" rel="noopener noreferrer">
