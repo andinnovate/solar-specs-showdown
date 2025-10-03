@@ -36,6 +36,7 @@ const Index = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const [user, setUser] = useState<any>(null);
+  const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
   
   const [filters, setFilters] = useState({
     wattageRange: [0, 1000] as [number, number],
@@ -181,8 +182,8 @@ const Index = () => {
 
   const filteredPanels = useMemo(() => {
     return panels.filter(panel => {
-      // Filter out hidden panels if user is logged in
-      if (user && isPanelHidden(panel.id)) {
+      // Filter out hidden panels if user is logged in (but keep fading out panels for animation)
+      if (user && isPanelHidden(panel.id) && !fadingOutPanels.has(panel.id)) {
         return false;
       }
 
@@ -214,7 +215,7 @@ const Index = () => {
         wattsPerSqM >= filters.wattsPerSqMRange[0] &&
         wattsPerSqM <= filters.wattsPerSqMRange[1];
     });
-  }, [panels, filters, user, isPanelHidden, isPanelFavorite]);
+  }, [panels, filters, user, isPanelHidden, isPanelFavorite, fadingOutPanels]);
 
   const sortedPanels = useMemo(() => {
     const sorted = [...filteredPanels];
@@ -263,6 +264,22 @@ const Index = () => {
         ? prev.filter(i => i !== id)
         : [...prev, id]
     );
+  };
+
+  const handleHidePanel = (id: string) => {
+    // Add to fading out set
+    setFadingOutPanels(prev => new Set([...prev, id]));
+    
+    // Call the actual toggle function after a delay to allow animation
+    setTimeout(() => {
+      togglePanelHidden(id);
+      // Remove from fading out set after animation completes
+      setFadingOutPanels(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+    }, 300); // Match the CSS transition duration
   };
 
   const resetFilters = () => {
@@ -452,7 +469,8 @@ const Index = () => {
                       isComparing={compareIds.includes(panel.id)}
                       isHidden={isPanelHidden(panel.id)}
                       isFavorite={isPanelFavorite(panel.id)}
-                      onToggleHidden={togglePanelHidden}
+                      isFadingOut={fadingOutPanels.has(panel.id)}
+                      onToggleHidden={handleHidePanel}
                       onToggleFavorite={togglePanelFavorite}
                       showUserActions={!!user}
                     />

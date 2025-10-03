@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface SolarPanel {
   id: string;
@@ -24,6 +25,7 @@ interface SolarPanelCardProps {
   isComparing?: boolean;
   isHidden?: boolean;
   isFavorite?: boolean;
+  isFadingOut?: boolean;
   onToggleHidden?: (id: string) => void;
   onToggleFavorite?: (id: string) => void;
   showUserActions?: boolean;
@@ -35,6 +37,7 @@ export const SolarPanelCard = ({
   isComparing, 
   isHidden = false, 
   isFavorite = false, 
+  isFadingOut = false,
   onToggleHidden, 
   onToggleFavorite, 
   showUserActions = false 
@@ -45,7 +48,9 @@ export const SolarPanelCard = ({
   const wattsPerSqM = (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0);
 
   return (
-    <Card className={`overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1 ${isHidden ? 'opacity-50' : ''}`}>
+    <Card className={`overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${
+      isFadingOut ? 'opacity-0 scale-95' : isHidden ? 'opacity-50' : 'opacity-100'
+    }`}>
       <div className="h-48 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 flex items-center justify-center relative">
         <Zap className="w-20 h-20 text-primary/30" />
         {isHidden && (
