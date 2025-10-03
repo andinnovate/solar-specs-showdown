@@ -65,64 +65,29 @@ export type Database = {
         }
         Relationships: []
       }
-      user_panel_preferences: {
-        Row: {
-          created_at: string
-          id: string
-          is_hidden: boolean
-          panel_id: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          is_hidden?: boolean
-          panel_id: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          is_hidden?: boolean
-          panel_id?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_panel_preferences_panel_id_fkey"
-            columns: ["panel_id"]
-            isOneToOne: false
-            referencedRelation: "solar_panels"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       user_favorites: {
         Row: {
-          created_at: string
+          created_at: string | null
           id: string
-          is_favorite: boolean
+          is_favorite: boolean | null
           panel_id: string
-          updated_at: string
+          updated_at: string | null
           user_id: string
         }
         Insert: {
-          created_at?: string
+          created_at?: string | null
           id?: string
-          is_favorite?: boolean
+          is_favorite?: boolean | null
           panel_id: string
-          updated_at?: string
+          updated_at?: string | null
           user_id: string
         }
         Update: {
-          created_at?: string
+          created_at?: string | null
           id?: string
-          is_favorite?: boolean
+          is_favorite?: boolean | null
           panel_id?: string
-          updated_at?: string
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: [
@@ -132,7 +97,42 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "solar_panels"
             referencedColumns: ["id"]
-          }
+          },
+        ]
+      }
+      user_panel_preferences: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_hidden: boolean | null
+          panel_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_hidden?: boolean | null
+          panel_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_hidden?: boolean | null
+          panel_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_panel_preferences_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "solar_panels"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
