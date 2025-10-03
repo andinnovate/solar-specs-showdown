@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SolarPanelCard } from "@/components/SolarPanelCard";
 import { FilterPanel } from "@/components/FilterPanel";
 import { ComparisonTable } from "@/components/ComparisonTable";
+import { VisualComparison } from "@/components/VisualComparison";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -36,6 +37,11 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showComparison, setShowComparison] = useState(false);
+  const [hoveredPanelId, setHoveredPanelId] = useState<string | null>(null);
+  
+  const handlePanelHover = (panelId: string | null) => {
+    setHoveredPanelId(panelId);
+  };
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const [user, setUser] = useState<any>(null);
@@ -489,7 +495,18 @@ const Index = () => {
                     });
                   }}
                   unitSystem={unitSystem}
+                  hoveredPanelId={hoveredPanelId}
+                  onPanelHover={handlePanelHover}
                 />
+                
+                {/* Visual Comparison */}
+                <VisualComparison 
+                  panels={comparedPanels}
+                  unitSystem={unitSystem}
+                  hoveredPanelId={hoveredPanelId}
+                  onPanelHover={handlePanelHover}
+                />
+                
                 <Separator className="my-6" />
               </div>
             )}

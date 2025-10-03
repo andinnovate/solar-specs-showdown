@@ -157,8 +157,10 @@ export const SolarPanelCard = ({
 
           <div className="flex items-center gap-2 text-sm">
             <Zap className="w-4 h-4 text-accent" />
-            <span className="text-muted-foreground">W/kg:</span>
-            <span className="font-bold text-accent">{wattsPerKg}</span>
+            <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'lb' : 'kg'}:</span>
+            <span className="font-bold text-accent">
+              {unitSystem === 'imperial' ? (parseFloat(wattsPerKg) / 0.453592).toFixed(1) : wattsPerKg}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 text-sm col-span-2">
