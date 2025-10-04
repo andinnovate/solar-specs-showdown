@@ -61,8 +61,10 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
 
     // Define container dimensions (in pixels)
     const containerWidth = 800;
-    const containerHeight = 400;
     const padding = 40;
+    
+    // Calculate dynamic height based on view mode
+    let containerHeight = 400; // Default for overlap mode
 
     // Find the largest panel to determine scaling
     const maxLength = Math.max(...panels.map(p => p.length_cm));
@@ -72,8 +74,19 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
     const scaleX = (containerWidth - padding * 2) / maxLength;
     const scaleY = (containerHeight - padding * 2) / maxWidth;
     const scale = Math.min(scaleX, scaleY, 2); // Max scale of 2 to prevent panels from being too large
+    
+    // Calculate dynamic height for stack mode
+    if (viewMode === 'stack') {
+      const verticalSpacing = 20;
+      const totalHeight = panels.reduce((acc, panel) => {
+        const panelHeight = panel.width_cm * scale;
+        return acc + panelHeight + verticalSpacing;
+      }, padding) + padding; // Add final padding
+      
+      containerHeight = Math.max(400, totalHeight); // Minimum 400px
+    }
 
-    // Arrange panels with tight spacing and smart positioning for aspect ratio contrast
+    // Arrange panels based on view mode
     const panelVisuals: PanelVisual[] = [];
     
     // Calculate panel dimensions in pixels
@@ -85,38 +98,32 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
       aspectRatio: (panel.length_cm * scale) / (panel.width_cm * scale)
     }));
     
-    // Sort panels to create maximum contrast - alternate between square and rectangular
-    const sortedPanels = panelsWithDimensions.sort((a, b) => {
-      // Calculate deviation from square (1.0)
-      const deviationA = Math.abs(a.aspectRatio - 1.0);
-      const deviationB = Math.abs(b.aspectRatio - 1.0);
-      
-      // Sort by deviation from square, but we'll rearrange later for contrast
-      return deviationA - deviationB;
-    });
+    let orderedPanels;
     
-    // Rearrange to create maximum contrast - alternate square-like and rectangular
-    const contrastPanels = [];
-    const squareLike = sortedPanels.filter(p => Math.abs(p.aspectRatio - 1.0) < 0.5);
-    const rectangular = sortedPanels.filter(p => Math.abs(p.aspectRatio - 1.0) >= 0.5);
-    
-    // Alternate between square-like and rectangular panels
-    const maxPanelsToPlace = Math.max(squareLike.length, rectangular.length);
-    for (let i = 0; i < maxPanelsToPlace; i++) {
-      if (i < squareLike.length) contrastPanels.push(squareLike[i]);
-      if (i < rectangular.length) contrastPanels.push(rectangular[i]);
+    if (viewMode === 'stack') {
+      // Sort by length (left-to-right dimension) from small to large
+      orderedPanels = panelsWithDimensions.sort((a, b) => a.panel.length_cm - b.panel.length_cm);
+    } else {
+      // For overlap mode, sort by total area (largest to smallest) so smallest panels appear on top
+      orderedPanels = panelsWithDimensions.sort((a, b) => {
+        const areaA = a.panel.length_cm * a.panel.width_cm;
+        const areaB = b.panel.length_cm * b.panel.width_cm;
+        return areaB - areaA; // Largest area first (bottom layer), smallest last (top layer)
+      });
     }
     
     // Position panels based on view mode
     if (viewMode === 'overlap') {
-      // Position panels with 100% overlap at same top-left coordinates
+      // Position panels with 95% vertical overlap for slight differentiation
       const baseX = padding;
       const baseY = padding;
+      const verticalOffset = 10; // Small offset for 95% overlap
       
-      contrastPanels.forEach(({ panel, width, height, scale }, index) => {
-        // All panels positioned at the same top-left coordinates for 100% overlap
+      orderedPanels.forEach(({ panel, width, height, scale }, index) => {
+        // Panels positioned with slight vertical offset for 95% overlap
+        // Smallest panels (top of sorted array) get smallest offset
         const x = baseX;
-        const y = baseY;
+        const y = baseY + (index * verticalOffset);
         
         panelVisuals.push({
           panel,
@@ -128,11 +135,11 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
         });
       });
     } else {
-      // Stack panels vertically with spacing
+      // Stack panels vertically with spacing, ordered by length
       let currentY = padding;
       const verticalSpacing = 20;
       
-      contrastPanels.forEach(({ panel, width, height, scale }, index) => {
+      orderedPanels.forEach(({ panel, width, height, scale }, index) => {
         const x = padding;
         const y = currentY;
         
@@ -170,7 +177,7 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
   }
 
   return (
-    <Card className="mt-6">
+    <Card className="mt-6 max-w-full overflow-hidden">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
