@@ -42,11 +42,76 @@ const Index = () => {
   const handlePanelHover = (panelId: string | null) => {
     setHoveredPanelId(panelId);
   };
+
+  const getAppliedFiltersCount = () => {
+    let count = 0;
+    const appliedFilters: string[] = [];
+
+    // Check each filter range to see if it's not at default bounds
+    if (filters.wattageRange[0] !== bounds.wattage.min || filters.wattageRange[1] !== bounds.wattage.max) {
+      count++;
+      appliedFilters.push('Wattage');
+    }
+    if (filters.voltageRange[0] !== bounds.voltage.min || filters.voltageRange[1] !== bounds.voltage.max) {
+      count++;
+      appliedFilters.push('Voltage');
+    }
+    if (filters.priceRange[0] !== bounds.price.min || filters.priceRange[1] !== bounds.price.max) {
+      count++;
+      appliedFilters.push('Price');
+    }
+    if (filters.pricePerWattRange[0] !== bounds.pricePerWatt.min || filters.pricePerWattRange[1] !== bounds.pricePerWatt.max) {
+      count++;
+      appliedFilters.push('$/W');
+    }
+    if (filters.lengthRange[0] !== bounds.length.min || filters.lengthRange[1] !== bounds.length.max) {
+      count++;
+      appliedFilters.push('Length');
+    }
+    if (filters.widthRange[0] !== bounds.width.min || filters.widthRange[1] !== bounds.width.max) {
+      count++;
+      appliedFilters.push('Width');
+    }
+    if (filters.weightRange[0] !== bounds.weight.min || filters.weightRange[1] !== bounds.weight.max) {
+      count++;
+      appliedFilters.push('Weight');
+    }
+    if (filters.wattsPerKgRange[0] !== bounds.wattsPerKg.min || filters.wattsPerKgRange[1] !== bounds.wattsPerKg.max) {
+      count++;
+      appliedFilters.push('W/kg');
+    }
+    if (filters.wattsPerSqMRange[0] !== bounds.wattsPerSqM.min || filters.wattsPerSqMRange[1] !== bounds.wattsPerSqM.max) {
+      count++;
+      appliedFilters.push('W/m²');
+    }
+    if (filters.showFavoritesOnly) {
+      count++;
+      appliedFilters.push('Favorites');
+    }
+
+    return { count, appliedFilters: appliedFilters.slice(0, 3) }; // Show max 3 filter names
+  };
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const [user, setUser] = useState<any>(null);
   const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
-  const [unitSystem, setUnitSystem] = useState<UnitSystem>('metric');
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
+    // Load from localStorage, default to 'metric'
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('solar-panel-unit-system');
+      return (saved as UnitSystem) || 'metric';
+    }
+    return 'metric';
+  });
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+
+  // Wrapper function to save unit system to localStorage
+  const handleUnitSystemChange = (newUnitSystem: UnitSystem) => {
+    setUnitSystem(newUnitSystem);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('solar-panel-unit-system', newUnitSystem);
+    }
+  };
   
   const [filters, setFilters] = useState({
     wattageRange: [0, 1000] as [number, number],
@@ -362,10 +427,10 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/5">
+    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/5" style={{ maxWidth: '100vw', overflowX: 'hidden' }}>
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-6">
+        <div className="px-4 py-6" style={{ maxWidth: '100vw', width: '100%' }}>
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-secondary">
@@ -389,22 +454,27 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-[300px_1fr] gap-6">
-          {/* Filters Sidebar */}
-          <aside>
-        <FilterPanel 
-          filters={filters}
-          bounds={bounds}
-          panels={panels}
-          favoritePanelIds={favoritePanels}
-          unitSystem={unitSystem}
-          onFilterChange={setFilters}
-          onReset={resetFilters}
-          onUnitSystemChange={setUnitSystem}
-        />
-          </aside>
+      {/* Filters Section */}
+      <section className="px-4 py-4 border-b bg-background/50" style={{ maxWidth: '100vw', width: '100vw', overflowX: 'hidden' }}>
+        <div style={{ maxWidth: '100%', width: '100%' }}>
+          <FilterPanel 
+            filters={filters}
+            bounds={bounds}
+            panels={panels}
+            favoritePanelIds={favoritePanels}
+            unitSystem={unitSystem}
+            onFilterChange={setFilters}
+            onReset={resetFilters}
+            onUnitSystemChange={handleUnitSystemChange}
+            isCollapsed={filtersCollapsed}
+            onToggleCollapsed={() => setFiltersCollapsed(!filtersCollapsed)}
+            appliedFiltersCount={getAppliedFiltersCount()}
+          />
+        </div>
+      </section>
 
+      <main className="px-4 py-8" style={{ maxWidth: '100vw', width: '100vw', overflowX: 'hidden' }}>
+        <div style={{ maxWidth: '100%', width: '100%' }}>
           {/* Main Content */}
           <div className="space-y-6">
             {/* Stats Bar with Controls */}
@@ -458,21 +528,50 @@ const Index = () => {
                   </Button>
                 </div>
 
-                {selectedIds.size > 0 && (
+                {/* Compare buttons - show Compare All when ≤10 panels, or Compare when some selected */}
+                {(sortedPanels.length <= 10 || selectedIds.size > 0) && (
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="default" 
-                      onClick={handleStartComparison}
-                      disabled={selectedIds.size < 2}
-                    >
-                      Compare ({selectedIds.size})
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={handleClearSelection}
-                    >
-                      Clear Selection
-                    </Button>
+                    {selectedIds.size > 0 && (
+                      <span className="text-sm text-muted-foreground">
+                        {selectedIds.size} selected
+                      </span>
+                    )}
+                    
+                    {/* Compare All button - show when ≤10 panels */}
+                    {sortedPanels.length <= 10 && (
+                      <Button 
+                        variant={selectedIds.size === 0 ? "default" : "outline"}
+                        onClick={() => {
+                          // Select all panels and start comparison
+                          const allPanelIds = new Set(sortedPanels.map(p => p.id));
+                          setSelectedIds(allPanelIds);
+                          setShowComparison(true);
+                        }}
+                      >
+                        Compare All ({sortedPanels.length})
+                      </Button>
+                    )}
+                    
+                    {/* Compare button - show when panels are selected */}
+                    {selectedIds.size > 0 && (
+                      <Button 
+                        variant="default" 
+                        onClick={handleStartComparison}
+                        disabled={selectedIds.size < 2}
+                      >
+                        Compare ({selectedIds.size})
+                      </Button>
+                    )}
+                    
+                    {/* Clear Selection button - show when panels are selected */}
+                    {selectedIds.size > 0 && (
+                      <Button 
+                        variant="outline" 
+                        onClick={handleClearSelection}
+                      >
+                        Clear Selection
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -480,24 +579,26 @@ const Index = () => {
 
             {/* Comparison Table */}
             {showComparison && comparedPanels.length >= 2 && (
-              <div className="space-y-2">
+              <div className="space-y-2 max-w-full">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Table className="w-5 h-5" />
                   Comparison
                 </h2>
-                <ComparisonTable 
-                  panels={comparedPanels}
-                  onRemove={(id) => {
-                    setSelectedIds(prev => {
-                      const newSet = new Set(prev);
-                      newSet.delete(id);
-                      return newSet;
-                    });
-                  }}
-                  unitSystem={unitSystem}
-                  hoveredPanelId={hoveredPanelId}
-                  onPanelHover={handlePanelHover}
-                />
+                <div className="w-full overflow-hidden" style={{ maxWidth: '100%' }}>
+                  <ComparisonTable 
+                    panels={comparedPanels}
+                    onRemove={(id) => {
+                      setSelectedIds(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(id);
+                        return newSet;
+                      });
+                    }}
+                    unitSystem={unitSystem}
+                    hoveredPanelId={hoveredPanelId}
+                    onPanelHover={handlePanelHover}
+                  />
+                </div>
                 
                 {/* Visual Comparison */}
                 <VisualComparison 

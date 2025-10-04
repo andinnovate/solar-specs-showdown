@@ -53,8 +53,8 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
 
   return (
     <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <Table>
+      <div className="overflow-x-auto border rounded-lg w-full">
+        <Table style={{ minWidth: `${200 + (panels.length * 300)}px` }}>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[200px] font-bold">Specification</TableHead>
@@ -65,7 +65,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                 return (
                   <TableHead 
                     key={panel.id} 
-                    className={`text-center min-w-[180px] transition-all duration-200 ${
+                    className={`text-center w-[300px] transition-all duration-200 ${
                       isHovered ? 'bg-blue-50 border-blue-200' : 
                       isHighlighted ? 'bg-gray-50 opacity-60' : ''
                     }`}
@@ -210,9 +210,10 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
               <TableCell className="font-medium">Watts/{unitSystem === 'imperial' ? 'lb' : 'kg'}</TableCell>
               {panels.map((panel) => {
                 const metrics = calculateMetrics(panel);
+                const wattsPerKgNum = panel.wattage / panel.weight_kg;
                 const wattsPerUnit = unitSystem === 'imperial' 
-                  ? (metrics.wattsPerKg / 0.453592).toFixed(1) // Convert kg to lb
-                  : metrics.wattsPerKg;
+                  ? (wattsPerKgNum / 0.453592).toFixed(1) // Convert kg to lb
+                  : wattsPerKgNum.toFixed(2);
                 return (
                   <TableCell 
                     key={panel.id} 

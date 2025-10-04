@@ -54,9 +54,12 @@ interface FilterPanelProps {
   onFilterChange: (filters: FilterPanelProps['filters']) => void;
   onReset: () => void;
   onUnitSystemChange: (unitSystem: UnitSystem) => void;
+  isCollapsed?: boolean;
+  onToggleCollapsed?: () => void;
+  appliedFiltersCount?: { count: number; appliedFilters: string[] };
 }
 
-export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSystem, onFilterChange, onReset, onUnitSystemChange }: FilterPanelProps) => {
+export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSystem, onFilterChange, onReset, onUnitSystemChange, isCollapsed, onToggleCollapsed, appliedFiltersCount }: FilterPanelProps) => {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   // Calculate derived data arrays for histograms
