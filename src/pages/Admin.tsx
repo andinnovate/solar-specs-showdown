@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User } from "lucide-react";
 import { CSVImporterComplete } from "@/components/CSVImporterComplete";
 import { UserManagement } from "@/components/UserManagement";
+import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -275,7 +276,13 @@ const Admin = () => {
             </TabsContent>
 
         <TabsContent value="user" className="space-y-6">
-          <UserManagement userId={user.id} unitSystem="metric" />
+          <UserManagement userId={user.id} unitSystem={(() => {
+            if (typeof window !== 'undefined') {
+              const saved = localStorage.getItem('solar-panel-unit-system');
+              return (saved as UnitSystem) || 'metric';
+            }
+            return 'metric';
+          })()} />
         </TabsContent>
           </Tabs>
         )}

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HistogramSlider } from "@/components/HistogramSlider";
-import { RotateCcw, ChevronDown, ChevronRight, Star, Ruler } from "lucide-react";
+import { RotateCcw, ChevronDown, ChevronRight, Star, Ruler, Filter } from "lucide-react";
 import { UnitSystem, cmToInches, kgToLbs } from "@/lib/unitConversions";
 
 interface SolarPanel {
@@ -60,6 +60,7 @@ interface FilterPanelProps {
 }
 
 export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSystem, onFilterChange, onReset, onUnitSystemChange, isCollapsed, onToggleCollapsed, appliedFiltersCount }: FilterPanelProps) => {
+
   const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   // Calculate derived data arrays for histograms
@@ -77,103 +78,132 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSys
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>Filters</CardTitle>
-          <Button variant="ghost" size="sm" onClick={onReset}>
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Reset
-          </Button>
+          <div className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Filters
+              {appliedFiltersCount && appliedFiltersCount.count > 0 && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({appliedFiltersCount.count} applied: {appliedFiltersCount.appliedFilters.join(', ')}{appliedFiltersCount.count > 3 ? '...' : ''})
+                </span>
+              )}
+            </CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            {onToggleCollapsed && (
+              <Button variant="ghost" size="sm" onClick={onToggleCollapsed}>
+                {isCollapsed ? (
+                  <ChevronRight className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onReset}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset
+            </Button>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Favorites Filter */}
-        {favoritePanelIds && favoritePanelIds.size > 0 && (
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="showFavoritesOnly"
-              checked={filters.showFavoritesOnly}
-              onCheckedChange={(checked) => 
-                onFilterChange({ ...filters, showFavoritesOnly: checked as boolean })
-              }
-            />
-            <Label htmlFor="showFavoritesOnly" className="flex items-center gap-2 cursor-pointer">
-              <Star className="w-4 h-4" />
-              Show favorites only ({favoritePanelIds.size} panels)
-            </Label>
-          </div>
-        )}
+      {!isCollapsed && (
+        <CardContent className="space-y-6">
+        {/* Top Row: Favorites and Unit Toggle */}
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Favorites Filter */}
+          {favoritePanelIds && favoritePanelIds.size > 0 && (
+            <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg flex-1">
+              <Checkbox
+                id="showFavoritesOnly"
+                checked={filters.showFavoritesOnly}
+                onCheckedChange={(checked) => 
+                  onFilterChange({ ...filters, showFavoritesOnly: checked as boolean })
+                }
+              />
+              <Label htmlFor="showFavoritesOnly" className="flex items-center gap-2 cursor-pointer">
+                <Star className="w-4 h-4" />
+                Show favorites only ({favoritePanelIds.size} panels)
+              </Label>
+            </div>
+          )}
 
-        {/* Unit System Toggle */}
-        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-          <div className="flex items-center gap-2">
-            <Ruler className="w-4 h-4" />
-            <span className="text-sm font-medium">Units</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={unitSystem === 'metric' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onUnitSystemChange('metric')}
-              className="text-xs px-3"
-            >
-              Metric
-            </Button>
-            <Button
-              variant={unitSystem === 'imperial' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onUnitSystemChange('imperial')}
-              className="text-xs px-3"
-            >
-              Imperial
-            </Button>
+          {/* Unit System Toggle */}
+          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg flex-1">
+            <div className="flex items-center gap-2">
+              <Ruler className="w-4 h-4" />
+              <span className="text-sm font-medium">Units</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={unitSystem === 'metric' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onUnitSystemChange('metric')}
+                className="text-xs px-3"
+              >
+                Metric
+              </Button>
+              <Button
+                variant={unitSystem === 'imperial' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onUnitSystemChange('imperial')}
+                className="text-xs px-3"
+              >
+                Imperial
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Primary Filters with Histograms */}
-        <HistogramSlider
-          label="Price (USD)"
-          value={filters.priceRange}
-          min={bounds.price.min}
-          max={bounds.price.max}
-          step={5}
-          data={priceData}
-          unit=""
-          formatValue={(val) => `$${val}`}
-          onValueChange={(value) => onFilterChange({ ...filters, priceRange: value })}
-        />
+        {/* Primary Filters with Histograms - Paired Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Price Pair */}
+          <HistogramSlider
+            label="Price (USD)"
+            value={filters.priceRange}
+            min={bounds.price.min}
+            max={bounds.price.max}
+            step={5}
+            data={priceData}
+            unit=""
+            formatValue={(val) => `$${val}`}
+            onValueChange={(value) => onFilterChange({ ...filters, priceRange: value })}
+          />
 
-        <HistogramSlider
-          label="$/W (USD per Watt)"
-          value={filters.pricePerWattRange}
-          min={bounds.pricePerWatt.min}
-          max={bounds.pricePerWatt.max}
-          step={0.01}
-          data={pricePerWattData}
-          unit=""
-          formatValue={(val) => `$${val.toFixed(2)}`}
-          onValueChange={(value) => onFilterChange({ ...filters, pricePerWattRange: value })}
-        />
+          <HistogramSlider
+            label="$/W (USD per Watt)"
+            value={filters.pricePerWattRange}
+            min={bounds.pricePerWatt.min}
+            max={bounds.pricePerWatt.max}
+            step={0.01}
+            data={pricePerWattData}
+            unit=""
+            formatValue={(val) => `$${val.toFixed(2)}`}
+            onValueChange={(value) => onFilterChange({ ...filters, pricePerWattRange: value })}
+          />
 
-        <HistogramSlider
-          label={`Length (${unitSystem === 'imperial' ? 'in' : 'cm'})`}
-          value={filters.lengthRange}
-          min={bounds.length.min}
-          max={bounds.length.max}
-          step={unitSystem === 'imperial' ? 1 : 5}
-          data={lengthData}
-          unit={unitSystem === 'imperial' ? 'in' : 'cm'}
-          onValueChange={(value) => onFilterChange({ ...filters, lengthRange: value })}
-        />
+          {/* Dimensions Pair */}
+          <HistogramSlider
+            label={`Length (${unitSystem === 'imperial' ? 'in' : 'cm'})`}
+            value={filters.lengthRange}
+            min={bounds.length.min}
+            max={bounds.length.max}
+            step={unitSystem === 'imperial' ? 1 : 5}
+            data={lengthData}
+            unit={unitSystem === 'imperial' ? 'in' : 'cm'}
+            onValueChange={(value) => onFilterChange({ ...filters, lengthRange: value })}
+          />
 
-        <HistogramSlider
-          label={`Width (${unitSystem === 'imperial' ? 'in' : 'cm'})`}
-          value={filters.widthRange}
-          min={bounds.width.min}
-          max={bounds.width.max}
-          step={unitSystem === 'imperial' ? 1 : 5}
-          data={widthData}
-          unit={unitSystem === 'imperial' ? 'in' : 'cm'}
-          onValueChange={(value) => onFilterChange({ ...filters, widthRange: value })}
-        />
+          <HistogramSlider
+            label={`Width (${unitSystem === 'imperial' ? 'in' : 'cm'})`}
+            value={filters.widthRange}
+            min={bounds.width.min}
+            max={bounds.width.max}
+            step={unitSystem === 'imperial' ? 1 : 5}
+            data={widthData}
+            unit={unitSystem === 'imperial' ? 'in' : 'cm'}
+            onValueChange={(value) => onFilterChange({ ...filters, widthRange: value })}
+          />
+        </div>
 
         {/* More Filters Collapsible Section */}
         <Collapsible open={showMoreFilters} onOpenChange={setShowMoreFilters}>
@@ -188,95 +218,106 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSys
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-6 mt-4">
-            <div className="space-y-2">
-              <Label className="flex justify-between">
-                <span>Wattage</span>
-                <span className="font-mono text-sm text-muted-foreground">
-                  {filters.wattageRange[0]}W - {filters.wattageRange[1]}W
-                </span>
-              </Label>
-              <Slider
-                min={bounds.wattage.min}
-                max={bounds.wattage.max}
-                step={10}
-                value={filters.wattageRange}
-                onValueChange={(value) => 
-                  onFilterChange({ ...filters, wattageRange: value as [number, number] })
-                }
-                className="py-4"
-              />
-            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Electrical Pair */}
+              <div className="space-y-2">
+                <Label className="flex justify-between">
+                  <span>Wattage</span>
+                  <span className="font-mono text-sm text-muted-foreground">
+                    {filters.wattageRange[0]}W - {filters.wattageRange[1]}W
+                  </span>
+                </Label>
+                <Slider
+                  min={bounds.wattage.min}
+                  max={bounds.wattage.max}
+                  step={10}
+                  value={filters.wattageRange}
+                  onValueChange={(value) => 
+                    onFilterChange({ ...filters, wattageRange: value as [number, number] })
+                  }
+                  className="py-4"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label className="flex justify-between">
-                <span>Voltage</span>
-                <span className="font-mono text-sm text-muted-foreground">
-                  {filters.voltageRange[0]}V - {filters.voltageRange[1]}V
-                </span>
-              </Label>
-              <Slider
-                min={bounds.voltage.min}
-                max={bounds.voltage.max}
-                step={0.5}
-                value={filters.voltageRange}
-                onValueChange={(value) => 
-                  onFilterChange({ ...filters, voltageRange: value as [number, number] })
-                }
-                className="py-4"
-              />
-            </div>
+              <div className="space-y-2">
+                <Label className="flex justify-between">
+                  <span>Voltage</span>
+                  <span className="font-mono text-sm text-muted-foreground">
+                    {filters.voltageRange[0]}V - {filters.voltageRange[1]}V
+                  </span>
+                </Label>
+                <Slider
+                  min={bounds.voltage.min}
+                  max={bounds.voltage.max}
+                  step={0.5}
+                  value={filters.voltageRange}
+                  onValueChange={(value) => 
+                    onFilterChange({ ...filters, voltageRange: value as [number, number] })
+                  }
+                  className="py-4"
+                />
+              </div>
 
-            <HistogramSlider
-              label={`Weight (${unitSystem === 'imperial' ? 'lbs' : 'kg'})`}
-              value={filters.weightRange}
-              min={bounds.weight.min}
-              max={bounds.weight.max}
-              step={unitSystem === 'imperial' ? 1 : 0.5}
-              data={weightData}
-              unit={unitSystem === 'imperial' ? 'lbs' : 'kg'}
-              onValueChange={(value) => onFilterChange({ ...filters, weightRange: value })}
-            />
+              {/* Weight */}
+              <div>
+                <HistogramSlider
+                  label={`Weight (${unitSystem === 'imperial' ? 'lbs' : 'kg'})`}
+                  value={filters.weightRange}
+                  min={bounds.weight.min}
+                  max={bounds.weight.max}
+                  step={unitSystem === 'imperial' ? 1 : 0.5}
+                  data={weightData}
+                  unit={unitSystem === 'imperial' ? 'lbs' : 'kg'}
+                  onValueChange={(value) => onFilterChange({ ...filters, weightRange: value })}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label className="flex justify-between">
-                <span>W/kg (Watts per kg)</span>
-                <span className="font-mono text-sm text-muted-foreground">
-                  {filters.wattsPerKgRange[0].toFixed(1)} - {filters.wattsPerKgRange[1].toFixed(1)}
-                </span>
-              </Label>
-              <Slider
-                min={bounds.wattsPerKg.min}
-                max={bounds.wattsPerKg.max}
-                step={0.5}
-                value={filters.wattsPerKgRange}
-                onValueChange={(value) => 
-                  onFilterChange({ ...filters, wattsPerKgRange: value as [number, number] })
-                }
-                className="py-4"
-              />
-            </div>
+              {/* Empty placeholder to balance the grid */}
+              <div></div>
 
-            <div className="space-y-2">
-              <Label className="flex justify-between">
-                <span>W/m² (Watts per m²)</span>
-                <span className="font-mono text-sm text-muted-foreground">
-                  {filters.wattsPerSqMRange[0].toFixed(0)} - {filters.wattsPerSqMRange[1].toFixed(0)}
-                </span>
-              </Label>
-              <Slider
-                min={bounds.wattsPerSqM.min}
-                max={bounds.wattsPerSqM.max}
-                step={1}
-                value={filters.wattsPerSqMRange}
-                onValueChange={(value) => 
-                  onFilterChange({ ...filters, wattsPerSqMRange: value as [number, number] })
-                }
-                className="py-4"
-              />
+              {/* Efficiency Pair */}
+              <div className="space-y-2">
+                <Label className="flex justify-between">
+                  <span>W/{unitSystem === 'imperial' ? 'lb' : 'kg'} (Watts per {unitSystem === 'imperial' ? 'lb' : 'kg'})</span>
+                  <span className="font-mono text-sm text-muted-foreground">
+                    {filters.wattsPerKgRange[0].toFixed(1)} - {filters.wattsPerKgRange[1].toFixed(1)}
+                  </span>
+                </Label>
+                <Slider
+                  min={bounds.wattsPerKg.min}
+                  max={bounds.wattsPerKg.max}
+                  step={0.5}
+                  value={filters.wattsPerKgRange}
+                  onValueChange={(value) => 
+                    onFilterChange({ ...filters, wattsPerKgRange: value as [number, number] })
+                  }
+                  className="py-4"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex justify-between">
+                  <span>W/{unitSystem === 'imperial' ? 'ft²' : 'm²'} (Watts per {unitSystem === 'imperial' ? 'ft²' : 'm²'})</span>
+                  <span className="font-mono text-sm text-muted-foreground">
+                    {filters.wattsPerSqMRange[0].toFixed(0)} - {filters.wattsPerSqMRange[1].toFixed(0)}
+                  </span>
+                </Label>
+                <Slider
+                  min={bounds.wattsPerSqM.min}
+                  max={bounds.wattsPerSqM.max}
+                  step={1}
+                  value={filters.wattsPerSqMRange}
+                  onValueChange={(value) => 
+                    onFilterChange({ ...filters, wattsPerSqMRange: value as [number, number] })
+                  }
+                  className="py-4"
+                />
+              </div>
             </div>
           </CollapsibleContent>
         </Collapsible>
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 };
