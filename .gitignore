@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+database_export
+ASIN_AFFILIATE_LINK
+scraperapi_sample.py

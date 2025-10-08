@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User } from "lucide-react";
+import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User, Shield, X } from "lucide-react";
 import { CSVImporterComplete } from "@/components/CSVImporterComplete";
 import { UserManagement } from "@/components/UserManagement";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
+import { isAdminUser } from "@/lib/adminUtils";
 import { toast } from "sonner";
 
 const Admin = () => {
@@ -17,19 +18,22 @@ const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     // Check current auth state
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+      setIsAdmin(isAdminUser(user));
       setLoading(false);
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsAdmin(isAdminUser(currentUser));
       setLoading(false);
     });
 
@@ -41,21 +45,12 @@ const Admin = () => {
     setAuthLoading(true);
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) throw error;
-        toast.success('Account created! Please check your email for confirmation.');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        toast.success('Signed in successfully!');
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+      toast.success('Signed in successfully!');
     } catch (error: any) {
       console.error('Auth error:', error);
       toast.error(error.message);
@@ -76,6 +71,86 @@ const Admin = () => {
           <Settings className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
           <p>Loading...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Check if user is authenticated but not admin
+  if (user && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/5">
+        <header className="border-b bg-background/80 backdrop-blur-sm">
+          <div className="container mx-auto px-4 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-secondary">
+                  <Settings className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    Admin Panel
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Solar panel management and data import
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" asChild>
+                  <a href="/">← Back to Home</a>
+                </Button>
+                <Button variant="outline" onClick={handleSignOut}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto">
+            <Card>
+              <CardHeader className="text-center">
+                <CardTitle className="flex items-center justify-center gap-2 text-destructive">
+                  <X className="w-5 h-5" />
+                  Access Denied
+                </CardTitle>
+                <CardDescription>
+                  You do not have admin privileges
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Alert className="border-destructive/50 text-destructive">
+                  <Shield className="h-4 w-4" />
+                  <AlertDescription>
+                    This admin panel is restricted to authorized administrators only. 
+                    Regular users can manage their personal preferences on the main application.
+                  </AlertDescription>
+                </Alert>
+                
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Signed in as: <span className="font-medium">{user.email}</span>
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Admin access is restricted to: ***REMOVED***
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button asChild className="flex-1">
+                    <a href="/">Go to Main App</a>
+                  </Button>
+                  <Button variant="outline" onClick={handleSignOut}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
       </div>
     );
   }
@@ -136,7 +211,7 @@ const Admin = () => {
                 <Alert className="mb-4">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    Admin features require authentication due to database security policies.
+                    Admin panel access is restricted to authorized administrators only.
                   </AlertDescription>
                 </Alert>
                 
@@ -166,7 +241,7 @@ const Admin = () => {
                   </div>
                   
                   <Button type="submit" className="w-full" disabled={authLoading}>
-                    {authLoading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+                    {authLoading ? 'Loading...' : 'Sign In'}
                   </Button>
                   
                   <div className="text-center space-y-2">
@@ -195,14 +270,9 @@ const Admin = () => {
                       {authLoading ? 'Signing in...' : 'Sign In with Development Account'}
                     </Button>
                     
-                    <Button
-                      type="button"
-                      variant="link"
-                      onClick={() => setIsSignUp(!isSignUp)}
-                      className="text-sm"
-                    >
-                      {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-                    </Button>
+                    <p className="text-sm text-muted-foreground">
+                      Admin access is restricted to: ***REMOVED***
+                    </p>
                   </div>
                 </form>
               </CardContent>

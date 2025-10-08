@@ -9,10 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Sun, Grid, Table, List, ArrowUpDown } from "lucide-react";
+import { Sun, Grid, Table, List, ArrowUpDown, User, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
 import { UnitSystem, formatDimensions, formatWeight } from "@/lib/unitConversions";
+import { isAdminUser } from "@/lib/adminUtils";
 
 interface SolarPanel {
   id: string;
@@ -94,6 +95,7 @@ const Index = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
     // Load from localStorage, default to 'metric'
@@ -143,11 +145,14 @@ const Index = () => {
     // Check auth state
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+      setIsAdmin(isAdminUser(user));
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsAdmin(isAdminUser(currentUser));
     });
 
     return () => subscription.unsubscribe();
@@ -446,9 +451,31 @@ const Index = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" asChild>
-                <a href="/admin">Admin Panel</a>
-              </Button>
+              {user ? (
+                <>
+                  {isAdmin && (
+                    <Button variant="outline" asChild>
+                      <a href="/admin">
+                        <Settings className="w-4 h-4 mr-2" />
+                        Admin Panel
+                      </a>
+                    </Button>
+                  )}
+                  <Button variant="outline" asChild>
+                    <a href="/preferences">
+                      <User className="w-4 h-4 mr-2" />
+                      My Preferences
+                    </a>
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" asChild>
+                  <a href="/preferences">
+                    <User className="w-4 h-4 mr-2" />
+                    Sign In
+                  </a>
+                </Button>
+              )}
             </div>
           </div>
         </div>
