@@ -9,7 +9,7 @@ export const CSVImporterDebug = () => {
   const [csvFile, setCSVFile] = useState<File | null>(null);
   const [debugLog, setDebugLog] = useState<string[]>(['Debug logger initialized']);
   const [error, setError] = useState<string | null>(null);
-  const [csvData, setCSVData] = useState<{headers: string[], rows: any[]} | null>(null);
+  const [csvData, setCSVData] = useState<{headers: string[], rows: Record<string, unknown>[]} | null>(null);
 
   const addDebugLog = (message: string) => {
     console.log(message);
@@ -43,7 +43,7 @@ export const CSVImporterDebug = () => {
       const rows = [];
       for (let i = 1; i < Math.min(lines.length, 6); i++) { // Only parse first 5 rows for debugging
         const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-        const row: any = {};
+        const row: Record<string, unknown> = {};
         headers.forEach((header, index) => {
           row[header] = values[index] || '';
         });

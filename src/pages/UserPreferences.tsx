@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const UserPreferences = () => {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ email?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,7 +42,7 @@ const UserPreferences = () => {
       });
       if (error) throw error;
       toast.success('Signed in successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Auth error:', error);
       toast.error(error.message);
     } finally {
@@ -165,7 +165,7 @@ const UserPreferences = () => {
                           });
                           if (error) throw error;
                           toast.success('Account created! Please check your email for confirmation.');
-                        } catch (error: any) {
+                        } catch (error: unknown) {
                           console.error('Sign up error:', error);
                           toast.error(`Sign up failed: ${error.message}`);
                         } finally {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +34,7 @@ export const UserManagement = ({ userId, unitSystem = 'metric' }: UserManagement
   const [favoritePanels, setFavoritePanels] = useState<SolarPanel[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -76,11 +76,11 @@ export const UserManagement = ({ userId, unitSystem = 'metric' }: UserManagement
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId, setLoading, setHiddenPanels, setFavoritePanels]);
 
   useEffect(() => {
     loadUserData();
-  }, [userId]);
+  }, [userId, loadUserData]);
 
   const removeFromHidden = async (panelId: string) => {
     try {

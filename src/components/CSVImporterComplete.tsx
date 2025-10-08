@@ -87,21 +87,7 @@ export const CSVImporterComplete = () => {
     setIsDragOver(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    
-    const files = Array.from(e.dataTransfer.files);
-    const csvFile = files.find(file => file.type === 'text/csv' || file.name.endsWith('.csv'));
-    
-    if (csvFile) {
-      handleFileSelect(csvFile);
-    } else {
-      setError('Please drop a CSV file');
-    }
-  }, []);
-
-  const handleFileSelect = async (file: File) => {
+  const handleFileSelect = useCallback(async (file: File) => {
     console.log('CSVImporterComplete: handleFileSelect called with:', file.name);
     setError(null);
     setCSVFile(file);
@@ -195,7 +181,21 @@ export const CSVImporterComplete = () => {
       console.error('CSVImporterComplete: Error in handleFileSelect:', err);
       setError(err instanceof Error ? err.message : 'Failed to parse CSV');
     }
-  };
+  }, [fieldMappings, setError, setCSVFile, setCSVHeaders, setCSVRows, setFieldMappings, setCurrentStep]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const csvFile = files.find(file => file.type === 'text/csv' || file.name.endsWith('.csv'));
+    
+    if (csvFile) {
+      handleFileSelect(csvFile);
+    } else {
+      setError('Please drop a CSV file');
+    }
+  }, [handleFileSelect, setError, setIsDragOver]);
 
   const handleFieldMappingComplete = () => {
     processCSVData();
@@ -293,7 +293,7 @@ export const CSVImporterComplete = () => {
         
         const panelsToInsert = newPanels.map(p => {
           // Only include valid database columns, filter out any unmapped/extra fields
-          const insertData: any = {};
+          const insertData: Record<string, unknown> = {};
           
           // Define valid database columns
           const validColumns = [
@@ -303,7 +303,7 @@ export const CSVImporterComplete = () => {
           
           // Only include fields that exist in the database schema
           validColumns.forEach(column => {
-            if (p.hasOwnProperty(column) && p[column] !== undefined) {
+            if (Object.prototype.hasOwnProperty.call(p, column) && p[column] !== undefined) {
               if (column === 'voltage' && p[column]) {
                 insertData[column] = Number(p[column]);
               } else if (['length_cm', 'width_cm', 'weight_kg', 'price_usd'].includes(column)) {
@@ -329,7 +329,7 @@ export const CSVImporterComplete = () => {
           // Validate numeric fields (only check fields that exist)
           const numericFields = ['length_cm', 'width_cm', 'weight_kg', 'wattage', 'price_usd'];
           for (const field of numericFields) {
-            if (insertData.hasOwnProperty(field) && isNaN(insertData[field])) {
+            if (Object.prototype.hasOwnProperty.call(insertData, field) && isNaN(insertData[field] as number)) {
               throw new Error(`Panel has invalid ${field}: ${insertData[field]}`);
             }
           }

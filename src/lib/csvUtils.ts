@@ -226,7 +226,7 @@ export function processCSVRow(
   csvRow: CSVRow, 
   fieldMappings: FieldMapping[]
 ): Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> {
-  const processed: any = {};
+  const processed: Record<string, unknown> = {};
 
   for (const mapping of fieldMappings) {
     const csvValue = csvRow[mapping.csvHeader];
@@ -238,7 +238,7 @@ export function processCSVRow(
       continue;
     }
 
-    let processedValue: any = csvValue.trim();
+    let processedValue: unknown = csvValue.trim();
 
     // Handle numeric fields with potential unit conversions
     if (['length_cm', 'width_cm'].includes(mapping.dbField)) {
@@ -303,7 +303,7 @@ export function calculateChanges(
 
   validColumns.forEach(key => {
     if (key in existing && key in updated && existing[key] !== updated[key]) {
-      (changes as any)[key] = updated[key];
+      (changes as Record<string, unknown>)[key] = updated[key];
     }
   });
 

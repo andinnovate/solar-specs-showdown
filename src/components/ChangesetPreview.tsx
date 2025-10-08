@@ -21,7 +21,7 @@ export const ChangesetPreview = ({ processedPanels, onImport, onCancel }: Change
   const updatedPanels = processedPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length > 0);
   const noChangePanels = processedPanels.filter(p => p.isUpdate && Object.keys(p.changes || {}).length === 0);
 
-  const formatValue = (value: any, field: string) => {
+  const formatValue = (value: unknown, field: string) => {
     if (value === null || value === undefined) return '—';
     
     if (field.includes('price')) {
@@ -56,10 +56,10 @@ export const ChangesetPreview = ({ processedPanels, onImport, onCancel }: Change
               {field.replace('_', ' ')}:
             </span>
             <span className="text-red-600 line-through">
-              {formatValue((panel.matchedPanel as any)[field], field)}
+              {formatValue((panel.matchedPanel as Record<string, unknown>)[field], field)}
             </span>
             <span className="text-green-600 font-medium">
-              {formatValue((panel.changes as any)[field], field)}
+              {formatValue((panel.changes as Record<string, unknown>)[field], field)}
             </span>
           </div>
         ))}

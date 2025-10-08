@@ -9,7 +9,7 @@ export const ADMIN_EMAIL = '***REMOVED***';
  * @param user - The authenticated user object
  * @returns boolean indicating if user is admin
  */
-export const isAdminUser = (user: any): boolean => {
+export const isAdminUser = (user: { email?: string } | null): boolean => {
   return user?.email === ADMIN_EMAIL;
 };
 

@@ -15,7 +15,7 @@ import { isAdminUser } from "@/lib/adminUtils";
 import { toast } from "sonner";
 
 const Admin = () => {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ email?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,7 +52,7 @@ const Admin = () => {
       });
       if (error) throw error;
       toast.success('Signed in successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Auth error:', error);
       toast.error(error.message);
     } finally {
@@ -258,7 +258,7 @@ const Admin = () => {
                           });
                           if (error) throw error;
                           toast.success('Signed in with development account!');
-                        } catch (error: any) {
+                        } catch (error: unknown) {
                           console.error('Development sign in error:', error);
                           toast.error(`Sign in failed: ${error.message}`);
                         } finally {
