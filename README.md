@@ -18,6 +18,19 @@ Changes made via Lovable will be committed automatically to this repo.
 
 If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
 
+### 🗄️ Supabase Configuration
+
+This project supports dual Supabase configurations:
+- **Lovable Supabase** (default): Used for production
+- **Local Supabase** (optional): For local development
+
+For local development with your own Supabase instance, see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md).
+
+Quick setup:
+```bash
+npm run setup:supabase
+```
+
 The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
 Follow these steps:

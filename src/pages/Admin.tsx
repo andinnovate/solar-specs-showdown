@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User, Shield, X } from "lucide-react";
 import { CSVImporterComplete } from "@/components/CSVImporterComplete";
 import { UserManagement } from "@/components/UserManagement";
+import { DevSupabaseConfig } from "@/components/DevSupabaseConfig";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
 import { isAdminUser } from "@/lib/adminUtils";
@@ -300,6 +301,7 @@ const Admin = () => {
             </TabsList>
 
             <TabsContent value="import" className="space-y-6">
+              <DevSupabaseConfig />
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
