@@ -1,0 +1,13 @@
+# Solar Panel Management Scripts Dependencies
+
+# Database
+supabase==2.3.4
+gotrue==2.4.2  # Pin to compatible version that doesn't pass proxy to httpx
+
+# HTTP requests and async
+httpcore<1.0  # Pin to 0.x for compatibility with httpx 0.25.2
+aiohttp==3.9.1
+requests==2.31.0
+
+# Environment and configuration
+python-dotenv==1.0.0
