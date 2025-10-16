@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.logging_config import ScriptExecutionContext, log_script_start, log_script_end
 from scripts.error_handling import RetryConfig, RetryHandler, GracefulDegradation, setup_error_recovery
 from scripts.database import SolarPanelDB
-# from scripts.scraper import AdvancedScraperAPIClient  # Not implemented yet
+from scripts.scraper import ScraperAPIClient
 from scripts.utils import send_notification
 
 async def simulate_database_operation(logger, error_handler, success: bool = True):
@@ -69,7 +69,7 @@ async def main():
         
         # Initialize services
         db = SolarPanelDB()
-        # scraper = AdvancedScraperAPIClient()  # Not implemented yet
+        scraper = ScraperAPIClient(script_logger=logger)
         
         summary = {
             'database_operations': 0,
