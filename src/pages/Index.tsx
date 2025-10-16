@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Sun, Grid, Table, List, ArrowUpDown, User, Settings } from "lucide-react";
+import { Sun, Grid, Table, List, ArrowUpDown, User, Settings, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
 import { UnitSystem, formatDimensions, formatWeight } from "@/lib/unitConversions";
@@ -611,6 +611,15 @@ const Index = () => {
                   <Table className="w-5 h-5" />
                   Comparison
                 </h2>
+                
+                {/* Amazon Affiliate Disclosure */}
+                <div className="bg-muted/50 border border-muted-foreground/20 rounded-lg p-3 text-sm text-muted-foreground">
+                  <p>
+                    <strong>Disclosure:</strong> As an Amazon Associate I earn from qualifying purchases. 
+                    Product links may contain affiliate links through which we receive a small commission at no additional cost to you.
+                  </p>
+                </div>
+                
                 <div className="w-full overflow-hidden" style={{ maxWidth: '100%' }}>
                   <ComparisonTable 
                     panels={comparedPanels}
@@ -645,6 +654,14 @@ const Index = () => {
                 {viewMode === 'cards' ? <Grid className="w-5 h-5" /> : <List className="w-5 h-5" />}
                 All Panels
               </h2>
+              
+              {/* Amazon Affiliate Disclosure */}
+              <div className="bg-muted/50 border border-muted-foreground/20 rounded-lg p-3 text-sm text-muted-foreground">
+                <p>
+                  <strong>Disclosure:</strong> As an Amazon Associate I earn from qualifying purchases. 
+                  Product links may contain affiliate links through which we receive a small commission at no additional cost to you.
+                </p>
+              </div>
               
               {viewMode === 'cards' ? (
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -717,13 +734,36 @@ const Index = () => {
                               Select
                             </label>
                           </div>
-                          {panel.web_url && (
-                            <Button size="sm" variant="ghost" asChild>
-                              <a href={panel.web_url} target="_blank" rel="noopener noreferrer">
-                                View
-                              </a>
-                            </Button>
-                          )}
+                          {panel.web_url && (() => {
+                            try {
+                              const domain = new URL(panel.web_url).hostname;
+                              return (
+                                <a 
+                                  href={panel.web_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="hover:opacity-70 transition-opacity inline-flex items-center p-2"
+                                  aria-label={`View on ${domain}`}
+                                >
+                                  <img 
+                                    src={`https://www.google.com/s2/favicons?sz=64&domain=${domain}`}
+                                    alt={domain}
+                                    className="w-4 h-4"
+                                    onError={(e) => {
+                                      // Fallback to ExternalLink icon if favicon fails to load
+                                      const target = e.target as HTMLImageElement;
+                                      target.style.display = 'none';
+                                      const icon = document.createElement('div');
+                                      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
+                                      target.parentElement?.appendChild(icon.firstChild!);
+                                    }}
+                                  />
+                                </a>
+                              );
+                            } catch {
+                              return null;
+                            }
+                          })()}
                         </div>
                       </div>
                     );
