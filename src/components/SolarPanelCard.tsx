@@ -154,7 +154,12 @@ export const SolarPanelCard = ({
           <div className="flex items-center gap-2 text-sm">
             <Ruler className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Size:</span>
-            <span className="font-medium">{formatArea(panel.length_cm, panel.width_cm, unitSystem)}</span>
+            <span className="font-medium">
+              {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
+              <span className="text-muted-foreground text-xs ml-1">
+                ({formatDimensions(panel.length_cm, panel.width_cm, unitSystem)})
+              </span>
+            </span>
           </div>
           
           <div className="flex items-center gap-2 text-sm">
