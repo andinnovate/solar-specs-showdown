@@ -7,12 +7,18 @@ This shows how to use the logging and error handling systems in practice.
 import asyncio
 import argparse
 import time
+import sys
+import os
 from typing import Dict, Any
+
+# Add the project root to Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scripts.logging_config import ScriptExecutionContext, log_script_start, log_script_end
 from scripts.error_handling import RetryConfig, RetryHandler, GracefulDegradation, setup_error_recovery
 from scripts.database import SolarPanelDB
-from scripts.scraper import AdvancedScraperAPIClient
-from scripts.utils import validate_environment, send_notification
+# from scripts.scraper import AdvancedScraperAPIClient  # Not implemented yet
+from scripts.utils import send_notification
 
 async def simulate_database_operation(logger, error_handler, success: bool = True):
     """Simulate a database operation that might fail"""
@@ -22,12 +28,12 @@ async def simulate_database_operation(logger, error_handler, success: bool = Tru
     logger.log_script_event("INFO", "Database operation completed successfully")
     return {"records_processed": 42}
 
-async def simulate_scraper_request(logger, error_handler, success: bool = True):
-    """Simulate a ScraperAPI request that might fail"""
+async def simulate_api_request(logger, error_handler, success: bool = True):
+    """Simulate an API request that might fail"""
     if not success:
-        raise TimeoutError("ScraperAPI request timed out")
+        raise TimeoutError("API request timed out")
     
-    logger.log_script_event("INFO", "ScraperAPI request completed successfully")
+    logger.log_script_event("INFO", "API request completed successfully")
     return {"products_found": 15}
 
 async def main():
@@ -59,11 +65,11 @@ async def main():
         # Setup graceful degradation
         graceful_degradation = GracefulDegradation(logger)
         graceful_degradation.set_fallback_data("database", {"records_processed": 0})
-        graceful_degradation.set_fallback_data("scraper", {"products_found": 0})
+        graceful_degradation.set_fallback_data("api", {"products_found": 0})
         
         # Initialize services
         db = SolarPanelDB()
-        scraper = AdvancedScraperAPIClient()
+        # scraper = AdvancedScraperAPIClient()  # Not implemented yet
         
         summary = {
             'database_operations': 0,
@@ -104,28 +110,28 @@ async def main():
                     logger.log_script_event("ERROR", "Too many errors, stopping execution")
                     break
             
-            # Simulate scraper requests with graceful degradation
-            logger.log_script_event("INFO", "Starting scraper requests")
+            # Simulate API requests with graceful degradation
+            logger.log_script_event("INFO", "Starting API requests")
             
             for i in range(2):
                 try:
                     result = await graceful_degradation.execute_with_fallback(
-                        simulate_scraper_request,
-                        service_name="scraper",
+                        simulate_api_request,
+                        service_name="api",
                         logger=logger,
                         error_handler=error_handler,
                         success=not (args.simulate_errors and i == 0)
                     )
                     summary['scraper_requests'] += 1
-                    logger.log_script_event("INFO", f"Scraper request {i+1} completed")
+                    logger.log_script_event("INFO", f"API request {i+1} completed")
                     
                 except Exception as e:
-                    error_handler.handle_error(e, f"Scraper request {i+1}")
+                    error_handler.handle_error(e, f"API request {i+1}")
                     summary['errors_handled'] += 1
             
             # Log performance metrics
             logger.log_performance_metric("database_operations", summary['database_operations'])
-            logger.log_performance_metric("scraper_requests", summary['scraper_requests'])
+            logger.log_performance_metric("api_requests", summary['scraper_requests'])
             logger.log_performance_metric("errors_handled", summary['errors_handled'])
             
             # Log error summary
@@ -138,7 +144,7 @@ async def main():
                 await send_notification(
                     f"Script completed with {error_summary['total_errors']} errors. "
                     f"Database operations: {summary['database_operations']}, "
-                    f"Scraper requests: {summary['scraper_requests']}",
+                    f"API requests: {summary['scraper_requests']}",
                     "Script Execution Report"
                 )
             

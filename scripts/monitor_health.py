@@ -7,8 +7,14 @@ Monitors database health, ScraperAPI usage, and system performance.
 import asyncio
 import argparse
 import time
+import sys
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
+
+# Add the project root to Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scripts.logging_config import ScriptExecutionContext
 from scripts.database import SolarPanelDB
 from scripts.utils import send_notification, format_duration
