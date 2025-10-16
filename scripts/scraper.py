@@ -258,8 +258,15 @@ class ScraperAPIParser:
                 return None
             
             # Parse voltage (optional)
+            # Note: Some products list "Maximum Voltage" as system voltage (e.g. 1000V)
+            # rather than panel operating voltage (12V-48V). We store it anyway for now.
             voltage_str = product_info.get('Maximum Voltage', '')
             voltage = UnitConverter.parse_voltage_string(voltage_str) if voltage_str else None
+            
+            # Optional: Flag suspiciously high voltages (likely system specs, not panel voltage)
+            # Typical panel voltages are 12V, 24V, 36V, 48V
+            # System voltages can be 600V, 1000V, 1500V
+            # We'll store them but they should be interpreted carefully
             
             # Parse price
             price_str = api_response.get('pricing', '')

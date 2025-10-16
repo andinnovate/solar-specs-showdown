@@ -102,9 +102,9 @@ export const SolarPanelCard = ({
       
       <CardHeader>
         <div className="flex justify-between items-start gap-2">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-xl">{panel.name}</CardTitle>
+              <CardTitle className="text-xl flex-1 min-w-0">{panel.name}</CardTitle>
               {panel.web_url && (() => {
                 try {
                   const domain = new URL(panel.web_url).hostname;
@@ -113,19 +113,20 @@ export const SolarPanelCard = ({
                       href={panel.web_url} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="hover:opacity-70 transition-opacity inline-flex items-center"
+                      className="hover:opacity-70 transition-opacity inline-flex items-center flex-shrink-0"
                       aria-label={`View on ${domain}`}
+                      title={`View on ${domain}`}
                     >
                       <img 
                         src={`https://www.google.com/s2/favicons?sz=64&domain=${domain}`}
                         alt={domain}
-                        className="w-5 h-5"
+                        className="w-5 h-5 flex-shrink-0"
                         onError={(e) => {
                           // Fallback to ExternalLink icon if favicon fails to load
                           const target = e.target as HTMLImageElement;
                           target.style.display = 'none';
                           const icon = document.createElement('div');
-                          icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
+                          icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
                           target.parentElement?.appendChild(icon.firstChild!);
                         }}
                       />

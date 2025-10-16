@@ -122,9 +122,11 @@ class SolarPanelDB:
                 return panel_id
             return None
         except Exception as e:
+            error_msg = f'Failed to add new panel: {str(e)}'
+            logger.error(error_msg)  # Log to console as well
             await self.log_script_execution(
                 'database', 'ERROR', 
-                f'Failed to add new panel: {str(e)}'
+                error_msg
             )
             return None
     
