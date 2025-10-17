@@ -13,6 +13,36 @@ The scraper module (`scripts/scraper.py`) handles:
 
 ## Features
 
+### Amazon Search (New!)
+
+Search Amazon for products using ScraperAPI's autoparse feature:
+
+```python
+from scripts.scraper import ScraperAPIClient
+
+client = ScraperAPIClient()
+
+# Search Amazon
+results = client.search_amazon("solar panel 400w", page=1)
+
+# ScraperAPI autoparse returns structured data:
+# results['products'] = [
+#     {'asin': 'B0C99GS958', 'title': '...', 'price': {...}, ...},
+#     ...
+# ]
+
+# Extract ASINs
+asins = client.extract_asins_from_search(results)
+# Returns: ['B0C99GS958', 'B0CB9X9XX1', ...]
+```
+
+**Key Features:**
+- ✅ Uses ScraperAPI's autoparse (no manual HTML parsing)
+- ✅ Returns structured JSON with product data
+- ✅ Handles pagination
+- ✅ Extracts ASINs automatically
+- ✅ Full error handling and logging
+
 ### Unit Conversions
 
 | Field | Input Format | Output Format | Example |

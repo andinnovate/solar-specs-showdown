@@ -282,3 +282,73 @@ class SolarPanelDB:
                 f'Failed to get scraper stats: {str(e)}'
             )
             return {}
+    
+    # ==================== ASIN Management Methods ====================
+    
+    async def asin_exists(self, asin: str) -> bool:
+        """
+        Check if ASIN already exists in solar_panels table.
+        
+        Args:
+            asin: Amazon Standard Identification Number
+            
+        Returns:
+            True if ASIN exists in database
+        """
+        try:
+            result = self.client.table('solar_panels').select('id').eq('asin', asin).limit(1).execute()
+            return len(result.data) > 0
+        except Exception as e:
+            logger.error(f"Failed to check ASIN existence: {e}")
+            return False
+    
+    async def extract_asin_from_url(self, web_url: str) -> Optional[str]:
+        """
+        Extract ASIN from Amazon URL.
+        
+        Args:
+            web_url: Amazon product URL
+            
+        Returns:
+            ASIN string or None if not found
+            
+        Examples:
+            "https://www.amazon.com/dp/B0C99GS958" -> "B0C99GS958"
+            "https://www.amazon.com/product/dp/B0C99GS958/ref=..." -> "B0C99GS958"
+        """
+        import re
+        if not web_url:
+            return None
+        match = re.search(r'/dp/([A-Z0-9]{10})', web_url)
+        return match.group(1) if match else None
+    
+    async def get_panels_with_asins(self) -> List[Dict]:
+        """
+        Get all panels with their ASINs (for revalidation).
+        
+        Returns:
+            List of panels with id, asin, web_url, updated_at
+        """
+        try:
+            result = self.client.table('solar_panels').select('id, asin, web_url, updated_at').execute()
+            return result.data
+        except Exception as e:
+            logger.error(f"Failed to get panels with ASINs: {e}")
+            return []
+    
+    async def get_panel_by_asin(self, asin: str) -> Optional[Dict]:
+        """
+        Get panel by ASIN.
+        
+        Args:
+            asin: Amazon Standard Identification Number
+            
+        Returns:
+            Panel data dict or None if not found
+        """
+        try:
+            result = self.client.table('solar_panels').select('*').eq('asin', asin).limit(1).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"Failed to get panel by ASIN: {e}")
+            return None

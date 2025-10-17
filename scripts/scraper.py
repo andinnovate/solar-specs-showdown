@@ -7,7 +7,7 @@ import re
 import requests
 import sys
 import os
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 import logging
 
 # Add the project root to Python path
@@ -416,4 +416,132 @@ class ScraperAPIClient:
                 time.sleep(delay)
         
         return results
+    
+    def search_amazon(self, keyword: str, page: int = 1, country_code: str = 'us') -> Optional[Dict]:
+        """
+        Search Amazon for products via ScraperAPI with autoparse.
+        
+        ScraperAPI's autoparse feature automatically parses Amazon search results
+        and returns structured JSON with product information.
+        
+        Args:
+            keyword: Search term (e.g., "solar panel 400w")
+            page: Page number (default: 1)
+            country_code: Amazon marketplace (default: 'us')
+            
+        Returns:
+            ScraperAPI autoparsed search results, or None if failed
+            
+        Example return (from ScraperAPI autoparse):
+        {
+            'search_parameters': {...},
+            'search_information': {...},
+            'products': [
+                {
+                    'asin': 'B0C99GS958',
+                    'title': 'Bifacial 100 Watt Solar Panel...',
+                    'link': 'https://www.amazon.com/dp/B0C99GS958',
+                    'price': {'value': 69.99, 'currency': 'USD', 'raw': '$69.99'},
+                    'rating': 3.8,
+                    'ratings_total': 99,
+                    ...
+                },
+                ...
+            ]
+        }
+        """
+        # Construct Amazon search URL
+        search_url = f"https://www.amazon.com/s?k={keyword.replace(' ', '+')}"
+        if page > 1:
+            search_url += f"&page={page}"
+        
+        payload = {
+            'api_key': self.api_key,
+            'url': search_url,
+            'output_format': 'json',
+            'autoparse': 'true',  # ScraperAPI autoparse handles search result parsing
+            'country_code': country_code
+        }
+        
+        try:
+            if self.logger:
+                self.logger.log_script_event("INFO", f"Searching Amazon via ScraperAPI: {keyword} (page {page})")
+            
+            import time
+            start_time = time.time()
+            
+            response = requests.get(self.base_url, params=payload, timeout=60)
+            response.raise_for_status()
+            
+            response_time_ms = int((time.time() - start_time) * 1000)
+            
+            # ScraperAPI autoparse returns structured JSON
+            api_data = response.json()
+            
+            if self.logger:
+                self.logger.log_scraper_request(search_url, True, response_time_ms)
+            
+            # ScraperAPI autoparse provides 'products' array
+            if 'products' in api_data and len(api_data['products']) > 0:
+                if self.logger:
+                    self.logger.log_script_event(
+                        "INFO", 
+                        f"ScraperAPI returned {len(api_data['products'])} products for '{keyword}'"
+                    )
+                
+                # Add our metadata for convenience
+                api_data['keyword'] = keyword
+                api_data['page'] = page
+                
+                return api_data
+            else:
+                if self.logger:
+                    self.logger.log_script_event("WARNING", f"No products found for keyword: {keyword}")
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            if self.logger:
+                self.logger.log_scraper_request(search_url, False, error=str(e))
+            logger.error(f"ScraperAPI search request failed for keyword '{keyword}': {e}")
+            return None
+        except Exception as e:
+            if self.logger:
+                self.logger.log_script_event("ERROR", f"Unexpected error searching for '{keyword}': {e}")
+            logger.error(f"Unexpected error searching for '{keyword}': {e}")
+            return None
+    
+    def extract_asins_from_search(self, search_results: Dict) -> List[str]:
+        """
+        Extract list of ASINs from ScraperAPI autoparsed search results.
+        
+        Args:
+            search_results: Autoparsed search results from search_amazon()
+            
+        Returns:
+            List of ASINs
+            
+        Example:
+            results = scraper.search_amazon("solar panel 400w")
+            asins = scraper.extract_asins_from_search(results)
+            # Returns: ['B0C99GS958', 'B0CB9X9XX1', ...]
+        """
+        if not search_results or 'products' not in search_results:
+            return []
+        
+        asins = []
+        for product in search_results['products']:
+            # ScraperAPI autoparse provides 'asin' field directly
+            asin = product.get('asin')
+            
+            # Fallback: extract from link/url if asin field missing
+            if not asin and 'link' in product:
+                import re
+                match = re.search(r'/dp/([A-Z0-9]{10})', product['link'])
+                if match:
+                    asin = match.group(1)
+            
+            if asin:
+                asins.append(asin)
+        
+        return asins
 
