@@ -8,6 +8,7 @@ Test Database: https://plsboshlmokjtwxpmrit.supabase.co
 """
 
 import pytest
+import uuid
 
 from scripts.asin_manager import ASINManager
 
@@ -61,7 +62,7 @@ class TestIsASINStaged:
         # Insert test staging record
         asin_manager.client.table('asin_staging').insert({
             'asin': 'TEST_STAGED01',
-            'source': 'test',
+            'source': 'manual',
             'status': 'pending'
         }).execute()
         
@@ -156,7 +157,7 @@ class TestStageASIN:
             asin='TEST_FULL001',
             source='search',
             source_keyword='bifacial solar panel',
-            search_id='uuid-test-123',
+            search_id=None,  # UUID field - use None for tests
             priority=100
         )
         
@@ -170,7 +171,7 @@ class TestStageASIN:
         
         assert record.data['source'] == 'search'
         assert record.data['source_keyword'] == 'bifacial solar panel'
-        assert record.data['search_id'] == 'uuid-test-123'
+        assert record.data['search_id'] is None
         assert record.data['priority'] == 100
         assert record.data['status'] == 'pending'
 
@@ -192,10 +193,10 @@ class TestGetPendingASINs:
         """Test returns pending ASINs in correct order"""
         # Insert test ASINs with different priorities
         asin_manager.client.table('asin_staging').insert([
-            {'asin': 'TEST_PEND01', 'source': 'test', 'status': 'pending', 'priority': 5},
-            {'asin': 'TEST_PEND02', 'source': 'test', 'status': 'pending', 'priority': 10},
-            {'asin': 'TEST_PEND03', 'source': 'test', 'status': 'pending', 'priority': 0},
-            {'asin': 'TEST_COMP01', 'source': 'test', 'status': 'completed', 'priority': 0},  # Should not be included
+            {'asin': 'TEST_PEND01', 'source': 'manual', 'status': 'pending', 'priority': 5},
+            {'asin': 'TEST_PEND02', 'source': 'manual', 'status': 'pending', 'priority': 10},
+            {'asin': 'TEST_PEND03', 'source': 'manual', 'status': 'pending', 'priority': 0},
+            {'asin': 'TEST_COMP01', 'source': 'manual', 'status': 'completed', 'priority': 0},  # Should not be included
         ]).execute()
         
         # Get pending ASINs
@@ -215,7 +216,7 @@ class TestGetPendingASINs:
         """Test that limit parameter works"""
         # Insert 5 pending ASINs
         asin_manager.client.table('asin_staging').insert([
-            {'asin': f'TEST_LIM{i:02d}', 'source': 'test', 'status': 'pending'}
+            {'asin': f'TEST_LIM{i:02d}', 'source': 'manual', 'status': 'pending'}
             for i in range(5)
         ]).execute()
         
@@ -230,9 +231,9 @@ class TestGetPendingASINs:
         """Test priority_only parameter filters correctly"""
         # Insert ASINs with different priorities
         asin_manager.client.table('asin_staging').insert([
-            {'asin': 'TEST_PRIOR01', 'source': 'test', 'status': 'pending', 'priority': 10},
-            {'asin': 'TEST_PRIOR02', 'source': 'test', 'status': 'pending', 'priority': 0},
-            {'asin': 'TEST_PRIOR03', 'source': 'test', 'status': 'pending', 'priority': 5},
+            {'asin': 'TEST_PRIOR01', 'source': 'manual', 'status': 'pending', 'priority': 10},
+            {'asin': 'TEST_PRIOR02', 'source': 'manual', 'status': 'pending', 'priority': 0},
+            {'asin': 'TEST_PRIOR03', 'source': 'manual', 'status': 'pending', 'priority': 5},
         ]).execute()
         
         # Get only priority > 0
@@ -253,7 +254,7 @@ class TestMarkASINProcessing:
         # Insert pending ASIN
         asin_manager.client.table('asin_staging').insert({
             'asin': 'TEST_PROC01',
-            'source': 'test',
+            'source': 'manual',
             'status': 'pending',
             'attempts': 0
         }).execute()
@@ -284,12 +285,24 @@ class TestMarkASINCompleted:
         # Insert processing ASIN
         asin_manager.client.table('asin_staging').insert({
             'asin': 'TEST_COMPL01',
-            'source': 'test',
+            'source': 'manual',
             'status': 'processing'
         }).execute()
         
         # Mark as completed
-        panel_id = 'uuid-test-panel-123'
+        # First create a real panel to satisfy foreign key constraint
+        panel_insert = asin_manager.db.client.table('solar_panels').insert({
+            'asin': 'TEST_PANEL_COMPL',
+            'name': 'Test Completed Panel',
+            'manufacturer': 'Test',
+            'length_cm': 100,
+            'width_cm': 50,
+            'weight_kg': 10,
+            'wattage': 100,
+            'price_usd': 99.99
+        }).execute()
+        panel_id = panel_insert.data[0]['id']
+        
         result = await asin_manager.mark_asin_completed('TEST_COMPL01', panel_id)
         
         assert result is True
@@ -315,7 +328,7 @@ class TestMarkASINFailed:
         # Insert ASIN with 1 attempt (below max of 3)
         asin_manager.client.table('asin_staging').insert({
             'asin': 'TEST_FAIL01',
-            'source': 'test',
+            'source': 'manual',
             'status': 'processing',
             'attempts': 1,
             'max_attempts': 3
@@ -342,7 +355,7 @@ class TestMarkASINFailed:
         # Insert ASIN at max attempts
         asin_manager.client.table('asin_staging').insert({
             'asin': 'TEST_FAIL02',
-            'source': 'test',
+            'source': 'manual',
             'status': 'processing',
             'attempts': 3,
             'max_attempts': 3
@@ -372,12 +385,12 @@ class TestGetStagingStats:
         """Test counts ASINs by status correctly"""
         # Insert ASINs with various statuses
         asin_manager.client.table('asin_staging').insert([
-            {'asin': 'TEST_STAT01', 'source': 'test', 'status': 'pending'},
-            {'asin': 'TEST_STAT02', 'source': 'test', 'status': 'pending'},
-            {'asin': 'TEST_STAT03', 'source': 'test', 'status': 'processing'},
-            {'asin': 'TEST_STAT04', 'source': 'test', 'status': 'completed'},
-            {'asin': 'TEST_STAT05', 'source': 'test', 'status': 'failed'},
-            {'asin': 'TEST_STAT06', 'source': 'test', 'status': 'duplicate'},
+            {'asin': 'TEST_STAT01', 'source': 'manual', 'status': 'pending'},
+            {'asin': 'TEST_STAT02', 'source': 'manual', 'status': 'pending'},
+            {'asin': 'TEST_STAT03', 'source': 'manual', 'status': 'processing'},
+            {'asin': 'TEST_STAT04', 'source': 'manual', 'status': 'completed'},
+            {'asin': 'TEST_STAT05', 'source': 'manual', 'status': 'failed'},
+            {'asin': 'TEST_STAT06', 'source': 'manual', 'status': 'duplicate'},
         ]).execute()
         
         # Get stats
@@ -413,9 +426,9 @@ class TestRetryFailedASINs:
         """Test retries ASINs that haven't exceeded max attempts"""
         # Insert failed ASINs
         asin_manager.client.table('asin_staging').insert([
-            {'asin': 'TEST_RETRY01', 'source': 'test', 'status': 'failed', 'attempts': 1, 'max_attempts': 3},
-            {'asin': 'TEST_RETRY02', 'source': 'test', 'status': 'failed', 'attempts': 2, 'max_attempts': 3},
-            {'asin': 'TEST_RETRY03', 'source': 'test', 'status': 'failed', 'attempts': 3, 'max_attempts': 3},  # At max
+            {'asin': 'TEST_RETRY01', 'source': 'manual', 'status': 'failed', 'attempts': 1, 'max_attempts': 3},
+            {'asin': 'TEST_RETRY02', 'source': 'manual', 'status': 'failed', 'attempts': 2, 'max_attempts': 3},
+            {'asin': 'TEST_RETRY03', 'source': 'manual', 'status': 'failed', 'attempts': 3, 'max_attempts': 3},  # At max
         ]).execute()
         
         # Retry failed ASINs
@@ -447,9 +460,9 @@ class TestClearDuplicates:
         """Test clears all records with status='duplicate'"""
         # Insert duplicate records
         asin_manager.client.table('asin_staging').insert([
-            {'asin': 'TEST_DUP01', 'source': 'test', 'status': 'duplicate'},
-            {'asin': 'TEST_DUP02', 'source': 'test', 'status': 'duplicate'},
-            {'asin': 'TEST_KEEP01', 'source': 'test', 'status': 'pending'},
+            {'asin': 'TEST_DUP01', 'source': 'manual', 'status': 'duplicate'},
+            {'asin': 'TEST_DUP02', 'source': 'manual', 'status': 'duplicate'},
+            {'asin': 'TEST_KEEP01', 'source': 'manual', 'status': 'pending'},
         ]).execute()
         
         # Clear duplicates
@@ -484,7 +497,7 @@ class TestCompleteWorkflow:
         asin = 'TEST_WORKFLOW'
         
         # Step 1: Stage new ASIN
-        stage_result = await asin_manager.stage_asin(asin, 'test', 'test keyword')
+        stage_result = await asin_manager.stage_asin(asin, 'manual', 'test keyword')
         assert stage_result is True
         
         record = asin_manager.client.table('asin_staging')\
@@ -500,7 +513,19 @@ class TestCompleteWorkflow:
         assert record.data['status'] == 'processing'
         
         # Step 3: Mark as completed
-        panel_id = 'uuid-panel-test'
+        # Create a real panel first
+        panel_insert = asin_manager.db.client.table('solar_panels').insert({
+            'asin': 'TEST_PANEL_WF1',
+            'name': 'Test Workflow Panel',
+            'manufacturer': 'Test',
+            'length_cm': 100,
+            'width_cm': 50,
+            'weight_kg': 10,
+            'wattage': 100,
+            'price_usd': 99.99
+        }).execute()
+        panel_id = panel_insert.data[0]['id']
+        
         complete_result = await asin_manager.mark_asin_completed(asin, panel_id)
         assert complete_result is True
         
@@ -515,7 +540,7 @@ class TestCompleteWorkflow:
         asin = 'TEST_RETRY_WF'
         
         # Stage ASIN
-        await asin_manager.stage_asin(asin, 'test')
+        await asin_manager.stage_asin(asin, 'manual')
         
         # Mark as processing
         await asin_manager.mark_asin_processing(asin)
@@ -532,8 +557,20 @@ class TestCompleteWorkflow:
         # Try again - mark processing
         await asin_manager.mark_asin_processing(asin)
         
-        # This time succeed
-        await asin_manager.mark_asin_completed(asin, 'uuid-success')
+        # This time succeed - create panel first
+        panel_insert = asin_manager.db.client.table('solar_panels').insert({
+            'asin': 'TEST_PANEL_WF2',
+            'name': 'Test Retry Workflow Panel',
+            'manufacturer': 'Test',
+            'length_cm': 100,
+            'width_cm': 50,
+            'weight_kg': 10,
+            'wattage': 100,
+            'price_usd': 99.99
+        }).execute()
+        panel_id = panel_insert.data[0]['id']
+        
+        await asin_manager.mark_asin_completed(asin, panel_id)
         
         # Should be completed
         record = asin_manager.client.table('asin_staging')\
