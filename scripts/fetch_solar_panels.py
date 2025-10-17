@@ -114,14 +114,11 @@ async def fetch_and_store_panel(
             logger.log_script_event("WARNING", f"Failed to fetch data for ASIN: {asin}")
             return False
         
-        # Check if panel already exists
-        panels = await db.get_panels_needing_price_update(limit=1000)
-        existing_panel = None
+        # Add ASIN to panel data (critical for deduplication)
+        panel_data['asin'] = asin
         
-        for panel in panels:
-            if panel.get('name') == panel_data['name'] and panel.get('manufacturer') == panel_data['manufacturer']:
-                existing_panel = panel
-                break
+        # Check if panel already exists by ASIN (proper deduplication)
+        existing_panel = await db.get_panel_by_asin(asin)
         
         if existing_panel:
             # Update existing panel
