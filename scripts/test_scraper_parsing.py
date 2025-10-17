@@ -161,6 +161,9 @@ def test_edge_cases():
     test_cases = [
         ("Dimensions without quotes", "115L x 66W x 3H", (115.0, 66.0)),
         ("Dimensions in cm", "115 x 66 x 3 cm", (115.0, 66.0)),
+        ("Dimensions simple inches", "43 x 33.9 x 0.1 inches", (109.22, 86.11)),
+        ("Dimensions reversed order", "33.9 x 43 x 0.1 inches", (109.22, 86.11)),  # Should swap to length > width
+        ("Dimensions without unit", "100 x 50 x 2", (100.0, 50.0)),  # Assumes cm for large values
         ("Weight in kg", "7.2 kg", 7.2),
         ("Price with comma", "$1,299.99", 1299.99),
         ("Voltage short form", "24V", 24.0),

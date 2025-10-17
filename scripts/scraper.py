@@ -40,51 +40,79 @@ class UnitConverter:
     def parse_dimension_string(dim_string: str) -> Optional[Tuple[float, float]]:
         """
         Parse Amazon product dimensions string into length and width in cm.
+        Flexible parsing that handles multiple formats and ensures length > width.
         
         Examples:
-            "45.67\"L x 17.71\"W x 1.18\"H" -> (115.90, 44.98)
-            "45.67L x 17.71W x 1.18H" -> (115.90, 44.98)
-            "115cm x 66cm x 3cm" -> (115.0, 66.0)
+            "45.67\"L x 17.71\"W x 1.18\"H" -> (116.00, 44.98)
+            "43 x 33.9 x 0.1 inches" -> (109.22, 86.11)
+            "115 x 66 x 3 cm" -> (115.0, 66.0)
+            "17.71 x 45.67 x 1.18 inches" -> (116.00, 44.98)  # auto-swaps to length > width
         
         Returns:
-            Tuple of (length_cm, width_cm) or None if parsing fails
+            Tuple of (length_cm, width_cm) where length >= width, or None if parsing fails
         """
         try:
-            # Pattern for dimensions with quotes (inches): "45.67\"L x 17.71\"W"
-            pattern_inches = r'([\d.]+)\s*["\']?\s*L\s*x\s*([\d.]+)\s*["\']?\s*W'
-            match = re.search(pattern_inches, dim_string, re.IGNORECASE)
+            dim1 = None
+            dim2 = None
+            has_labels = False
+            unit_is_inches = False
+            
+            # Pattern 1: With L/W labels: "45.67\"L x 17.71\"W" or "45.67L x 17.71W"
+            pattern_labeled = r'([\d.]+)\s*["\']?\s*L\s*x\s*([\d.]+)\s*["\']?\s*W'
+            match = re.search(pattern_labeled, dim_string, re.IGNORECASE)
             
             if match:
-                length = float(match.group(1))
-                width = float(match.group(2))
+                dim1 = float(match.group(1))  # Length (as labeled)
+                dim2 = float(match.group(2))  # Width (as labeled)
+                has_labels = True
+                # Check if inches (has quotes) or cm
+                unit_is_inches = '"' in dim_string or "'" in dim_string
+            else:
+                # Pattern 2: Three dimensions with unit: "43 x 33.9 x 0.1 inches" or "115 x 66 x 3 cm"
+                pattern_three = r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*[\d.]+\s*(inch|cm)'
+                match = re.search(pattern_three, dim_string, re.IGNORECASE)
                 
-                # Check if dimensions have quotes (inches) or are already in cm
-                if '"' in dim_string or "'" in dim_string:
-                    # Convert from inches to cm
-                    length_cm = UnitConverter.inches_to_cm(length)
-                    width_cm = UnitConverter.inches_to_cm(width)
+                if match:
+                    dim1 = float(match.group(1))
+                    dim2 = float(match.group(2))
+                    unit_is_inches = 'inch' in match.group(3).lower()
                 else:
-                    # Already in cm or check if values are reasonable
-                    # If values are > 20, likely already in cm; if < 20, likely inches
-                    if length > 20 or width > 20:
-                        length_cm = round(length, 2)
-                        width_cm = round(width, 2)
-                    else:
-                        length_cm = UnitConverter.inches_to_cm(length)
-                        width_cm = UnitConverter.inches_to_cm(width)
-                
-                return (length_cm, width_cm)
+                    # Pattern 3: Just three numbers: "43 x 33.9 x 0.1"
+                    pattern_numbers = r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*[\d.]+'
+                    match = re.search(pattern_numbers, dim_string, re.IGNORECASE)
+                    
+                    if match:
+                        dim1 = float(match.group(1))
+                        dim2 = float(match.group(2))
+                        # Guess unit: if values > 20, likely cm; otherwise inches
+                        unit_is_inches = dim1 <= 20 and dim2 <= 20
             
-            # Alternative pattern: "115 x 66 x 3 cm"
-            pattern_cm = r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*[\d.]+\s*cm'
-            match = re.search(pattern_cm, dim_string, re.IGNORECASE)
+            if dim1 is None or dim2 is None:
+                return None
             
-            if match:
-                length_cm = round(float(match.group(1)), 2)
-                width_cm = round(float(match.group(2)), 2)
-                return (length_cm, width_cm)
+            # Convert to cm if in inches
+            if unit_is_inches:
+                dim1_cm = UnitConverter.inches_to_cm(dim1)
+                dim2_cm = UnitConverter.inches_to_cm(dim2)
+            else:
+                dim1_cm = round(dim1, 2)
+                dim2_cm = round(dim2, 2)
             
-            return None
+            # Ensure length >= width (unless explicitly labeled with L/W)
+            if has_labels:
+                # Trust the labels, but still ensure length > width makes sense
+                length_cm = dim1_cm
+                width_cm = dim2_cm
+            else:
+                # No labels: put larger dimension as length
+                if dim1_cm >= dim2_cm:
+                    length_cm = dim1_cm
+                    width_cm = dim2_cm
+                else:
+                    length_cm = dim2_cm
+                    width_cm = dim1_cm
+            
+            return (length_cm, width_cm)
             
         except (ValueError, AttributeError) as e:
             logger.warning(f"Failed to parse dimensions '{dim_string}': {e}")
