@@ -4,33 +4,59 @@ Pytest test suite for ScraperAPI parsing and unit conversion functionality.
 
 ## Running Tests
 
-### Run All Tests (Default - No API Calls)
+### Run All Tests (Default - No External Calls)
 ```bash
-# From project root - uses mocked data, NO API credits consumed
+# From project root - uses mocked/fixture data, NO API or DB calls
 pytest
 
 # Or explicitly from tests directory
 pytest scripts/tests/
 
 # With coverage
-pytest --cov=scripts.scraper --cov-report=term-missing
+pytest --cov=scripts --cov-report=term-missing
 ```
 
-**Default Behavior:** Live API tests are **skipped automatically** to avoid consuming ScraperAPI credits.
+**Default Behavior:** 
+- Live API tests are **skipped** (no API credits)
+- Integration tests are **skipped** (no database calls)
+- Only unit tests with mocks/fixtures run
+
+### Run Integration Tests (Real Test Database)
+```bash
+# Run integration tests against test Supabase instance
+pytest --use-test-db
+
+# Only integration tests
+pytest -m integration --use-test-db
+
+# Specific integration test file
+pytest scripts/tests/test_asin_manager.py --use-test-db -v
+```
+
+⚠️ **Note:** Requires connection to test Supabase at `https://plsboshlmokjtwxpmrit.supabase.co`
 
 ### Run Tests Including Live API Calls
 ```bash
 # Use --live-api flag to run tests that make real API calls
 pytest --live-api
 
-# Only run live API tests
-pytest -m live_api --live-api
-
-# Specific live test
-pytest scripts/tests/test_live_scraper.py::TestRealAPIOptional --live-api
+# Run everything (unit + integration + live API)
+pytest --use-test-db --live-api
 ```
 
 ⚠️ **Warning:** Tests with `--live-api` flag will consume ScraperAPI credits!
+
+### Common Test Patterns
+```bash
+# Just unit tests (default - fast, no external deps)
+pytest                                  # 110 passed, 35 skipped
+
+# Unit + integration tests (test database)
+pytest --use-test-db                    # 144 passed, 1 skipped
+
+# Everything including live API
+pytest --use-test-db --live-api         # 145 passed
+```
 
 ### Run Specific Test File
 ```bash
