@@ -525,12 +525,26 @@ class ScraperAPIClient:
                                 f"Found '{possible_key}' key with {count} items"
                             )
             
-            # ScraperAPI autoparse provides 'products' array
-            if 'products' in api_data and len(api_data['products']) > 0:
+            # ScraperAPI autoparse provides products in various keys depending on response type
+            # Search results use 'results', product details use 'products'
+            # Try multiple possible keys and normalize to 'products' for consistency
+            products_data = None
+            products_key = None
+            
+            for key in ['results', 'products', 'organic_results', 'search_results', 'items']:
+                if key in api_data and isinstance(api_data[key], list) and len(api_data[key]) > 0:
+                    products_data = api_data[key]
+                    products_key = key
+                    break
+            
+            if products_data:
+                # Normalize to 'products' key for downstream compatibility
+                api_data['products'] = products_data
+                
                 if self.logger:
                     self.logger.log_script_event(
                         "INFO", 
-                        f"ScraperAPI returned {len(api_data['products'])} products for '{keyword}'"
+                        f"ScraperAPI returned {len(products_data)} products for '{keyword}' (from '{products_key}' key)"
                     )
                 
                 # Add our metadata for convenience
