@@ -130,6 +130,67 @@ class SolarPanelDB:
             )
             return None
     
+    async def update_panel_from_scraper(self, panel_id: str, panel_data: Dict, respect_manual_overrides: bool = True) -> Tuple[bool, List[str]]:
+        """
+        Update panel from scraper data, respecting manual overrides.
+        
+        Args:
+            panel_id: ID of panel to update
+            panel_data: New data from scraper
+            respect_manual_overrides: If True, skip fields that have been manually edited
+        
+        Returns:
+            Tuple of (success: bool, skipped_fields: List[str])
+        """
+        try:
+            skipped_fields = []
+            
+            if respect_manual_overrides:
+                # Get current panel to check manual_overrides
+                current_result = self.client.table('solar_panels').select('manual_overrides').eq('id', panel_id).execute()
+                
+                if current_result.data:
+                    manual_overrides = current_result.data[0].get('manual_overrides', [])
+                    
+                    # Filter out fields that have been manually edited
+                    update_data = {}
+                    for key, value in panel_data.items():
+                        if key in manual_overrides:
+                            skipped_fields.append(key)
+                            logger.info(f"Skipping manually edited field '{key}' for panel {panel_id}")
+                        else:
+                            update_data[key] = value
+                    
+                    if not update_data:
+                        await self.log_script_execution(
+                            'database', 'INFO', 
+                            f'No fields to update for panel {panel_id} - all manually overridden'
+                        )
+                        return True, skipped_fields
+                else:
+                    update_data = panel_data
+            else:
+                update_data = panel_data
+            
+            # Update panel
+            self.client.table('solar_panels').update(update_data).eq('id', panel_id).execute()
+            
+            await self.log_script_execution(
+                'database', 'INFO', 
+                f'Updated panel {panel_id} from scraper. Skipped {len(skipped_fields)} manually edited field(s).',
+                metadata={'skipped_fields': skipped_fields}
+            )
+            return True, skipped_fields
+            
+        except Exception as e:
+            error_msg = f'Failed to update panel from scraper: {str(e)}'
+            logger.error(error_msg)
+            await self.log_script_execution(
+                'database', 'ERROR', 
+                error_msg
+            )
+            return False, []
+    
     async def get_flagged_panels(self, status: str = 'needs_review') -> List[Dict]:
         """Get flagged panels with panel details"""
         try:

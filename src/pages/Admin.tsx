@@ -9,13 +9,15 @@ import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User,
 import { CSVImporterComplete } from "@/components/CSVImporterComplete";
 import { UserManagement } from "@/components/UserManagement";
 import { DevSupabaseConfig } from "@/components/DevSupabaseConfig";
+import { DatabaseManager } from "@/components/DatabaseManager";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
 import { isAdminUser } from "@/lib/adminUtils";
 import { toast } from "sonner";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 const Admin = () => {
-  const [user, setUser] = useState<{ email?: string } | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,7 +56,7 @@ const Admin = () => {
       toast.success('Signed in successfully!');
     } catch (error: unknown) {
       console.error('Auth error:', error);
-      toast.error(error.message);
+      toast.error(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
       setAuthLoading(false);
     }
@@ -260,7 +262,7 @@ const Admin = () => {
                           toast.success('Signed in with development account!');
                         } catch (error: unknown) {
                           console.error('Development sign in error:', error);
-                          toast.error(`Sign in failed: ${error.message}`);
+                          toast.error(`Sign in failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
                         } finally {
                           setAuthLoading(false);
                         }
@@ -324,11 +326,11 @@ const Admin = () => {
                 <CardHeader>
                   <CardTitle>Database Management</CardTitle>
                   <CardDescription>
-                    View and manage solar panel records in the database.
+                    View, edit, and manage solar panel records in the database.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground">Database management features coming soon...</p>
+                  <DatabaseManager />
                 </CardContent>
               </Card>
             </TabsContent>
