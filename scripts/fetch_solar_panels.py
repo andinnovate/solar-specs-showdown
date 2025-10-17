@@ -8,6 +8,8 @@ import asyncio
 import argparse
 import sys
 import os
+import csv
+from typing import List
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,6 +19,74 @@ from scripts.error_handling import RetryConfig, RetryHandler
 from scripts.database import SolarPanelDB
 from scripts.scraper import ScraperAPIClient
 from scripts.utils import send_notification
+
+
+def read_asins_from_file(filepath: str) -> List[str]:
+    """
+    Read ASINs from a file (CSV or text format).
+    
+    Args:
+        filepath: Path to file containing ASINs
+        
+    Returns:
+        List of ASINs
+        
+    Supported formats:
+        - Text file: One ASIN per line
+        - CSV file: Extracts ASINs from 'asin' column or first column
+    """
+    asins = []
+    
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            # Try to detect if it's a CSV file
+            first_line = f.readline().strip()
+            f.seek(0)  # Reset to beginning
+            
+            if ',' in first_line or filepath.endswith('.csv'):
+                # CSV format
+                reader = csv.DictReader(f)
+                
+                # Look for 'asin' column (case-insensitive)
+                fieldnames = [fn.lower() for fn in reader.fieldnames] if reader.fieldnames else []
+                
+                if 'asin' in fieldnames:
+                    # Use 'asin' column
+                    for row in reader:
+                        asin = row.get('asin') or row.get('ASIN') or row.get('Asin')
+                        if asin and asin.strip():
+                            asins.append(asin.strip())
+                else:
+                    # Use first column
+                    f.seek(0)
+                    reader = csv.reader(f)
+                    for row in reader:
+                        if row and row[0].strip():
+                            # Skip header if it looks like one
+                            if row[0].strip().upper() not in ['ASIN', 'ID', 'PRODUCT_ID']:
+                                asins.append(row[0].strip())
+            else:
+                # Text format: one ASIN per line
+                for line in f:
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if line and not line.startswith('#'):
+                        asins.append(line)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_asins = []
+        for asin in asins:
+            if asin not in seen:
+                seen.add(asin)
+                unique_asins.append(asin)
+        
+        return unique_asins
+        
+    except FileNotFoundError:
+        raise ValueError(f"File not found: {filepath}")
+    except Exception as e:
+        raise ValueError(f"Error reading file {filepath}: {str(e)}")
 
 
 async def fetch_and_store_panel(
@@ -119,8 +189,29 @@ async def fetch_and_store_panel(
 
 
 async def main():
-    parser = argparse.ArgumentParser(description='Fetch solar panel data from Amazon')
-    parser.add_argument('asins', nargs='+', help='Amazon ASINs to fetch')
+    parser = argparse.ArgumentParser(
+        description='Fetch solar panel data from Amazon',
+        epilog='''
+Examples:
+  # Fetch single ASIN
+  python fetch_solar_panels.py B0C99GS958
+  
+  # Fetch multiple ASINs
+  python fetch_solar_panels.py B0C99GS958 B0CB9X9XX1 B0D2RT4S3B
+  
+  # Read from text file (one ASIN per line)
+  python fetch_solar_panels.py --file asins.txt
+  
+  # Read from CSV file
+  python fetch_solar_panels.py --file asins.csv
+  
+  # Combine file and command-line ASINs
+  python fetch_solar_panels.py B0C99GS958 --file asins.txt
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('asins', nargs='*', help='Amazon ASINs to fetch (optional if using --file)')
+    parser.add_argument('--file', '-f', type=str, help='Read ASINs from file (CSV or text, one per line)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     parser.add_argument('--delay', type=float, default=2.0, help='Delay between requests (seconds)')
     parser.add_argument('--max-retries', type=int, default=3, help='Maximum retry attempts')
@@ -128,10 +219,40 @@ async def main():
     
     args = parser.parse_args()
     
+    # Collect ASINs from command line and/or file
+    all_asins = list(args.asins) if args.asins else []
+    
+    if args.file:
+        try:
+            file_asins = read_asins_from_file(args.file)
+            all_asins.extend(file_asins)
+            print(f"✓ Read {len(file_asins)} ASINs from {args.file}")
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+    
+    # Validate we have ASINs to process
+    if not all_asins:
+        parser.error("No ASINs provided. Specify ASINs as arguments or use --file option.")
+        return 1
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_asins = []
+    for asin in all_asins:
+        if asin not in seen:
+            seen.add(asin)
+            unique_asins.append(asin)
+    
+    if len(unique_asins) < len(all_asins):
+        print(f"ℹ️  Removed {len(all_asins) - len(unique_asins)} duplicate ASINs")
+    
+    all_asins = unique_asins
+    
     # Use context manager for automatic logging setup
     with ScriptExecutionContext('fetch_solar_panels', 'DEBUG' if args.verbose else 'INFO') as (logger, error_handler):
         
-        logger.log_script_event("INFO", f"Starting to fetch {len(args.asins)} solar panels")
+        logger.log_script_event("INFO", f"Starting to fetch {len(all_asins)} solar panels")
         
         # Initialize services
         db = SolarPanelDB()
@@ -143,7 +264,7 @@ async def main():
         
         # Track results
         results = {
-            'total': len(args.asins),
+            'total': len(all_asins),
             'successful': 0,
             'failed': 0,
             'asins_failed': []
@@ -151,8 +272,8 @@ async def main():
         
         try:
             # Process each ASIN
-            for i, asin in enumerate(args.asins):
-                logger.log_script_event("INFO", f"Processing ASIN {i+1}/{len(args.asins)}: {asin}")
+            for i, asin in enumerate(all_asins):
+                logger.log_script_event("INFO", f"Processing ASIN {i+1}/{len(all_asins)}: {asin}")
                 
                 success = await fetch_and_store_panel(
                     scraper, db, asin, retry_handler, logger
@@ -165,7 +286,7 @@ async def main():
                     results['asins_failed'].append(asin)
                 
                 # Add delay between requests (except for last one)
-                if i < len(args.asins) - 1:
+                if i < len(all_asins) - 1:
                     logger.log_script_event("DEBUG", f"Waiting {args.delay}s before next request...")
                     await asyncio.sleep(args.delay)
             

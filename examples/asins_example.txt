@@ -1,0 +1,15 @@
+# Example ASIN file - Text format
+# One ASIN per line
+# Lines starting with # are ignored
+
+# Solar Panels - 100W Series
+B0C99GS958
+B0CB9X9XX1
+
+# Solar Panels - High Wattage
+B0D2RT4S3B
+B0DMP9V9XS
+
+# Usage:
+# python scripts/fetch_solar_panels.py --file examples/asins_example.txt
+
