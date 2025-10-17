@@ -508,6 +508,22 @@ class ScraperAPIClient:
             
             if self.logger:
                 self.logger.log_scraper_request(search_url, True, response_time_ms)
+                
+                # Enhanced debug logging for search responses
+                self.logger.log_script_event(
+                    "DEBUG",
+                    f"Search response keys: {list(api_data.keys()) if isinstance(api_data, dict) else 'Not a dict'}"
+                )
+                
+                # Log if we can find products under different keys
+                if isinstance(api_data, dict):
+                    for possible_key in ['products', 'results', 'organic_results', 'search_results', 'items']:
+                        if possible_key in api_data:
+                            count = len(api_data[possible_key]) if isinstance(api_data[possible_key], list) else '?'
+                            self.logger.log_script_event(
+                                "DEBUG",
+                                f"Found '{possible_key}' key with {count} items"
+                            )
             
             # ScraperAPI autoparse provides 'products' array
             if 'products' in api_data and len(api_data['products']) > 0:

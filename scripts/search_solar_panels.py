@@ -54,7 +54,8 @@ async def search_and_stage(
     scraper: ScraperAPIClient,
     asin_manager: ASINManager,
     logger,
-    priority: int = 0
+    priority: int = 0,
+    dump_response_file: str = None
 ) -> dict:
     """
     Search for a keyword and stage discovered ASINs.
@@ -79,6 +80,14 @@ async def search_and_stage(
         
         # Perform search
         search_results = scraper.search_amazon(keyword, page=page)
+        
+        # Save response for debugging if requested (only first page)
+        if page == 1 and dump_response_file:
+            import json
+            dump_file = dump_response_file.replace('{keyword}', keyword.replace(' ', '_'))
+            with open(dump_file, 'w') as f:
+                json.dump(search_results if search_results else {}, f, indent=2)
+            print(f"  [DEBUG] Response saved to: {dump_file}")
         
         if not search_results:
             logger.log_script_event("WARNING", f"No results for page {page}")
@@ -173,6 +182,12 @@ async def main():
         action='store_true',
         help='Show staging stats and exit (no search)'
     )
+    parser.add_argument(
+        '--dump-response',
+        type=str,
+        metavar='FILE',
+        help='Save raw ScraperAPI response to JSON file for debugging'
+    )
     
     args = parser.parse_args()
     
@@ -228,7 +243,8 @@ async def main():
                     scraper=scraper,
                     asin_manager=asin_manager,
                     logger=logger,
-                    priority=args.priority
+                    priority=args.priority,
+                    dump_response_file=args.dump_response
                 )
                 
                 # Update overall stats
