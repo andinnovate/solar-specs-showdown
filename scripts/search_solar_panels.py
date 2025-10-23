@@ -16,8 +16,45 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.logging_config import ScriptExecutionContext
 from scripts.scraper import ScraperAPIClient
 from scripts.asin_manager import ASINManager
+from scripts.product_filter import ProductFilter
 from scripts.config import config
 from supabase import create_client
+
+
+async def log_filtered_asin(asin: str, filter_stage: str, filter_reason: str, 
+                           product_name: str = None, product_url: str = None, 
+                           wattage: int = None, confidence: float = 0.0):
+    """
+    Log a filtered ASIN to the database.
+    
+    Args:
+        asin: ASIN that was filtered
+        filter_stage: 'search' or 'ingest'
+        filter_reason: Reason for filtering
+        product_name: Name of the product
+        product_url: URL of the product
+        wattage: Wattage if available
+        confidence: Confidence level (0.0 to 1.0)
+    """
+    try:
+        client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        
+        result = client.table('filtered_asins').insert({
+            'asin': asin,
+            'filter_stage': filter_stage,
+            'filter_reason': filter_reason,
+            'product_name': product_name,
+            'product_url': product_url,
+            'wattage': wattage,
+            'confidence': confidence,
+            'created_by': 'search_solar_panels'
+        }).execute()
+        
+        return result.data[0]['id'] if result.data else None
+        
+    except Exception as e:
+        print(f"Warning: Failed to log filtered ASIN to database: {e}")
+        return None
 
 
 async def log_search_to_db(keyword: str, results_count: int, asins_found: List[str], script_name: str):
@@ -66,6 +103,7 @@ async def search_and_stage(
     stats = {
         'keyword': keyword,
         'total_found': 0,
+        'filtered_out': 0,
         'already_in_db': 0,
         'already_staged': 0,
         'newly_staged': 0,
@@ -104,6 +142,40 @@ async def search_and_stage(
         
         # Stage each ASIN
         for asin in asins:
+            # Find product data for filtering
+            product_data = None
+            product_name = None
+            product_url = None
+            
+            # Try to find product data in search results
+            if search_results and 'products' in search_results:
+                for product in search_results['products']:
+                    if product.get('asin') == asin:
+                        product_data = product
+                        product_name = product.get('name', '')
+                        product_url = product.get('url', '')
+                        break
+            
+            # Apply product filtering
+            if product_name:
+                filter_result = product_filter.should_reject_product(product_name, product_data)
+                
+                if filter_result.should_reject:
+                    stats['filtered_out'] += 1
+                    logger.log_script_event("DEBUG", f"Filtered ASIN {asin}: {filter_result.reason}")
+                    
+                    # Log filtered ASIN to database
+                    await log_filtered_asin(
+                        asin=asin,
+                        filter_stage='search',
+                        filter_reason=filter_result.reason,
+                        product_name=product_name,
+                        product_url=product_url,
+                        wattage=product_filter.extract_wattage_from_name(product_name),
+                        confidence=filter_result.confidence
+                    )
+                    continue
+            
             # Check if already in database
             if await asin_manager.is_asin_in_database(asin):
                 stats['already_in_db'] += 1
@@ -142,7 +214,8 @@ async def search_and_stage(
     logger.log_script_event(
         "INFO",
         f"Search complete for '{keyword}': {stats['total_found']} found, "
-        f"{stats['newly_staged']} newly staged, {stats['already_in_db']} already in DB"
+        f"{stats['filtered_out']} filtered out, {stats['newly_staged']} newly staged, "
+        f"{stats['already_in_db']} already in DB"
     )
     
     return stats
@@ -197,6 +270,7 @@ async def main():
         # Initialize services
         scraper = ScraperAPIClient(script_logger=logger)
         asin_manager = ASINManager()
+        product_filter = ProductFilter()
         
         # Show stats if requested
         if args.stats_only:
@@ -223,6 +297,7 @@ async def main():
         overall_stats = {
             'total_keywords': len(args.keywords),
             'total_found': 0,
+            'total_filtered': 0,
             'total_staged': 0,
             'already_in_db': 0,
             'already_staged': 0
@@ -249,6 +324,7 @@ async def main():
                 
                 # Update overall stats
                 overall_stats['total_found'] += stats['total_found']
+                overall_stats['total_filtered'] += stats['filtered_out']
                 overall_stats['total_staged'] += stats['newly_staged']
                 overall_stats['already_in_db'] += stats['already_in_db']
                 overall_stats['already_staged'] += stats['already_staged']
@@ -256,6 +332,7 @@ async def main():
                 # Display keyword summary
                 print(f"\n  Keyword: {keyword}")
                 print(f"    Found: {stats['total_found']} ASINs")
+                print(f"    Filtered Out: {stats['filtered_out']}")
                 print(f"    Newly Staged: {stats['newly_staged']}")
                 print(f"    Already in DB: {stats['already_in_db']}")
                 print(f"    Already Staged: {stats['already_staged']}")
@@ -270,6 +347,7 @@ async def main():
             print("=" * 60)
             print(f"Keywords Searched: {overall_stats['total_keywords']}")
             print(f"Total ASINs Found: {overall_stats['total_found']}")
+            print(f"Filtered Out: {overall_stats['total_filtered']}")
             print(f"Newly Staged: {overall_stats['total_staged']}")
             print(f"Already in Database: {overall_stats['already_in_db']}")
             print(f"Already Staged: {overall_stats['already_staged']}")

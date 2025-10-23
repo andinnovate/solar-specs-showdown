@@ -19,6 +19,42 @@ from scripts.asin_manager import ASINManager
 from scripts.database import SolarPanelDB
 
 
+async def log_filtered_asin(asin: str, filter_stage: str, filter_reason: str, 
+                           product_name: str = None, product_url: str = None, 
+                           wattage: int = None, confidence: float = 0.0):
+    """
+    Log a filtered ASIN to the database.
+    
+    Args:
+        asin: ASIN that was filtered
+        filter_stage: 'search' or 'ingest'
+        filter_reason: Reason for filtering
+        product_name: Name of the product
+        product_url: URL of the product
+        wattage: Wattage if available
+        confidence: Confidence level (0.0 to 1.0)
+    """
+    try:
+        client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        
+        result = client.table('filtered_asins').insert({
+            'asin': asin,
+            'filter_stage': filter_stage,
+            'filter_reason': filter_reason,
+            'product_name': product_name,
+            'product_url': product_url,
+            'wattage': wattage,
+            'confidence': confidence,
+            'created_by': 'ingest_staged_asins'
+        }).execute()
+        
+        return result.data[0]['id'] if result.data else None
+        
+    except Exception as e:
+        print(f"Warning: Failed to log filtered ASIN to database: {e}")
+        return None
+
+
 async def ingest_single_asin(
     asin: str,
     scraper: ScraperAPIClient,
@@ -50,6 +86,27 @@ async def ingest_single_asin(
             error_msg = f"Failed to fetch product data for ASIN: {asin}"
             logger.log_script_event("ERROR", error_msg)
             await asin_manager.mark_asin_failed(asin, error_msg)
+            return False
+        
+        # Apply wattage filtering
+        wattage = product_data.get('wattage')
+        if wattage is not None and wattage < 30:
+            filter_reason = f"wattage_too_low_{wattage}W"
+            logger.log_script_event("INFO", f"Filtering ASIN {asin}: {filter_reason}")
+            
+            # Log filtered ASIN to database
+            await log_filtered_asin(
+                asin=asin,
+                filter_stage='ingest',
+                filter_reason=filter_reason,
+                product_name=product_data.get('name', ''),
+                product_url=product_data.get('web_url', ''),
+                wattage=wattage,
+                confidence=0.95
+            )
+            
+            # Mark as failed with filter reason
+            await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}")
             return False
         
         # Add ASIN to product data
