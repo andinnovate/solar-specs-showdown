@@ -17,6 +17,8 @@ from scripts.error_handling import RetryConfig, RetryHandler
 from scripts.scraper import ScraperAPIClient
 from scripts.asin_manager import ASINManager
 from scripts.database import SolarPanelDB
+from scripts.config import config
+from supabase import create_client
 
 
 async def log_filtered_asin(asin: str, filter_stage: str, filter_reason: str, 
@@ -245,6 +247,82 @@ async def main():
             print(f"  Duplicate: {stats.get('duplicate', 0)}")
             print(f"  Skipped: {stats.get('skipped', 0)}")
             print("=" * 60)
+            
+            # Show detailed breakdown if verbose
+            if args.verbose:
+                print("\n" + "=" * 60)
+                print("DETAILED BREAKDOWN")
+                print("=" * 60)
+                
+                # Get pending ASINs with details
+                pending_asins = await asin_manager.get_pending_asins(limit=50)
+                if pending_asins:
+                    print(f"\nPending ASINs (showing up to 50):")
+                    for i, asin_info in enumerate(pending_asins[:20], 1):  # Show first 20
+                        asin = asin_info['asin']
+                        source = asin_info.get('source', 'unknown')
+                        keyword = asin_info.get('source_keyword', 'N/A')
+                        priority = asin_info.get('priority', 0)
+                        created_at = asin_info.get('created_at', 'N/A')
+                        
+                        print(f"  {i:2d}. {asin} | {source} | {keyword} | Priority: {priority}")
+                        if created_at != 'N/A':
+                            # Format timestamp for readability
+                            try:
+                                from datetime import datetime
+                                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                                formatted_time = dt.strftime('%Y-%m-%d %H:%M')
+                                print(f"      Created: {formatted_time}")
+                            except:
+                                print(f"      Created: {created_at}")
+                    
+                    if len(pending_asins) > 20:
+                        print(f"  ... and {len(pending_asins) - 20} more")
+                
+                # Get failed ASINs with details
+                try:
+                    # Query failed ASINs directly from database
+                    client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+                    failed_result = client.table('asin_staging').select('*').eq('status', 'failed').order('created_at', desc=True).limit(10).execute()
+                    
+                    if failed_result.data:
+                        print(f"\nRecent Failed ASINs (last 10):")
+                        for i, asin_info in enumerate(failed_result.data, 1):
+                            asin = asin_info['asin']
+                            source = asin_info.get('source', 'unknown')
+                            keyword = asin_info.get('source_keyword', 'N/A')
+                            error_msg = asin_info.get('error_message', 'No error message')
+                            failed_at = asin_info.get('updated_at', asin_info.get('created_at', 'N/A'))
+                            
+                            print(f"  {i:2d}. {asin} | {source} | {keyword}")
+                            print(f"      Error: {error_msg[:60]}{'...' if len(error_msg) > 60 else ''}")
+                            if failed_at != 'N/A':
+                                try:
+                                    from datetime import datetime
+                                    dt = datetime.fromisoformat(failed_at.replace('Z', '+00:00'))
+                                    formatted_time = dt.strftime('%Y-%m-%d %H:%M')
+                                    print(f"      Failed: {formatted_time}")
+                                except:
+                                    print(f"      Failed: {failed_at}")
+                except Exception as e:
+                    print(f"\nCould not fetch failed ASIN details: {e}")
+                
+                # Show source breakdown
+                try:
+                    source_result = client.table('asin_staging').select('source').execute()
+                    if source_result.data:
+                        sources = {}
+                        for item in source_result.data:
+                            source = item.get('source', 'unknown')
+                            sources[source] = sources.get(source, 0) + 1
+                        
+                        print(f"\nSource Breakdown:")
+                        for source, count in sorted(sources.items(), key=lambda x: x[1], reverse=True):
+                            print(f"  {source}: {count}")
+                except Exception as e:
+                    print(f"\nCould not fetch source breakdown: {e}")
+                
+                print("=" * 60)
             
             return 0
         
