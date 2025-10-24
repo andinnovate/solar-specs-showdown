@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.logging_config import ScriptExecutionContext
 from scripts.error_handling import RetryConfig, RetryHandler
-from scripts.scraper import ScraperAPIClient
+from scripts.scraper import ScraperAPIClient, ScraperAPIForbiddenError
 from scripts.asin_manager import ASINManager
 from scripts.database import SolarPanelDB
 from scripts.config import config
@@ -72,22 +72,52 @@ async def ingest_single_asin(
         True if successful, False otherwise
     """
     try:
+        # Check for duplicates BEFORE making API calls to save credits
+        existing_panel = await db.get_panel_by_asin(asin)
+        
+        if existing_panel:
+            logger.log_script_event(
+                "INFO",
+                f"ASIN {asin} already exists in database. Skipping API call to save credits."
+            )
+            await asin_manager.mark_asin_failed(asin, "Already exists in database")
+            return False
+        
         # Mark as processing
         await asin_manager.mark_asin_processing(asin)
         
         # Fetch product data with retry logic
         logger.log_script_event("INFO", f"Fetching product details for ASIN: {asin}")
         
-        product_data = await retry_handler.execute_with_retry(
-            scraper.fetch_product,
-            asin,
-            service_name="scraperapi"
-        )
+        try:
+            product_data = await retry_handler.execute_with_retry(
+                scraper.fetch_product,
+                asin,
+                service_name="scraperapi"
+            )
+        except ScraperAPIForbiddenError as e:
+            # 403 Forbidden error - stop processing and leave ASIN as pending
+            logger.log_script_event("CRITICAL", f"ScraperAPI 403 Forbidden error: {str(e)}")
+            logger.log_script_event("CRITICAL", "Stopping processing due to API access issues. ASINs will remain pending.")
+            logger.log_script_event("CRITICAL", "Please check ScraperAPI credentials and rate limits.")
+            # Don't mark as failed - leave as pending for retry later
+            return False
+        except Exception as e:
+            error_msg = f"Exception during product fetch for ASIN {asin}: {str(e)}"
+            logger.log_script_event("ERROR", error_msg)
+            await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
+            return False
         
         if not product_data:
+            # Check if this is a parsing failure by looking at recent logs
             error_msg = f"Failed to fetch product data for ASIN: {asin}"
             logger.log_script_event("ERROR", error_msg)
-            await asin_manager.mark_asin_failed(asin, error_msg)
+            
+            # Enhanced logging for debugging
+            logger.log_script_event("ERROR", f"Product data was None for ASIN: {asin}")
+            logger.log_script_event("ERROR", f"This typically indicates a parsing failure in the scraper")
+            
+            await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
             return False
         
         # Apply wattage filtering
@@ -113,17 +143,6 @@ async def ingest_single_asin(
         
         # Add ASIN to product data
         product_data['asin'] = asin
-        
-        # Check if panel already exists (race condition check)
-        existing_panel = await db.get_panel_by_asin(asin)
-        
-        if existing_panel:
-            logger.log_script_event(
-                "WARNING",
-                f"ASIN {asin} already exists in database (race condition). Marking as duplicate."
-            )
-            await asin_manager.mark_asin_failed(asin, "Already exists in database")
-            return False
         
         # Insert into database
         panel_id = await db.add_new_panel(product_data)
@@ -215,6 +234,11 @@ async def main():
         '--stats-only',
         action='store_true',
         help='Show staging stats and exit (no ingestion)'
+    )
+    parser.add_argument(
+        '--asin',
+        type=str,
+        help='Process a specific ASIN (ignores status and batch size)'
     )
     
     args = parser.parse_args()
@@ -325,6 +349,49 @@ async def main():
                 print("=" * 60)
             
             return 0
+        
+        # Handle specific ASIN processing
+        if args.asin:
+            logger.log_script_event("INFO", f"Processing specific ASIN: {args.asin}")
+            
+            # Get ASIN details from database
+            try:
+                client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+                asin_result = client.table('asin_staging').select('*').eq('asin', args.asin).execute()
+                
+                if not asin_result.data:
+                    print(f"ASIN {args.asin} not found in staging table")
+                    return 1
+                
+                asin_info = asin_result.data[0]
+                print(f"\nProcessing ASIN: {args.asin}")
+                print(f"  Current Status: {asin_info.get('status', 'unknown')}")
+                print(f"  Source: {asin_info.get('source', 'unknown')}")
+                print(f"  Keyword: {asin_info.get('source_keyword', 'N/A')}")
+                print(f"  Attempts: {asin_info.get('attempts', 0)}/{asin_info.get('max_attempts', 3)}")
+                print(f"  Error: {asin_info.get('error_message', 'None')}")
+                print("=" * 60)
+                
+                # Process the specific ASIN
+                success = await ingest_single_asin(
+                    asin=args.asin,
+                    scraper=scraper,
+                    db=db,
+                    asin_manager=asin_manager,
+                    retry_handler=retry_handler,
+                    logger=logger
+                )
+                
+                if success:
+                    print(f"\n✓ Successfully processed ASIN: {args.asin}")
+                else:
+                    print(f"\n✗ Failed to process ASIN: {args.asin}")
+                
+                return 0 if success else 1
+                
+            except Exception as e:
+                logger.log_script_event("ERROR", f"Error processing specific ASIN {args.asin}: {e}")
+                return 1
         
         # Retry failed ASINs if requested
         if args.retry_failed:

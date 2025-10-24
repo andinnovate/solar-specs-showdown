@@ -19,6 +19,11 @@ from scripts.logging_config import ScriptLogger
 logger = logging.getLogger(__name__)
 
 
+class ScraperAPIForbiddenError(Exception):
+    """Custom exception for ScraperAPI 403 Forbidden errors"""
+    pass
+
+
 class UnitConverter:
     """Handles unit conversions for solar panel specifications"""
     
@@ -162,20 +167,60 @@ class UnitConverter:
             "100 Watts" -> 100
             "100W" -> 100
             "100" -> 100
+            "8E+2 Watts" -> 800
+            "1.5kW" -> 1500
+            "2.5E+3W" -> 2500
         
         Returns:
             Wattage as integer or None if parsing fails
         """
         try:
-            # Extract numeric value
-            numeric_match = re.search(r'([\d.]+)', power_string)
-            if not numeric_match:
+            if not power_string or not power_string.strip():
                 return None
             
-            value = float(numeric_match.group(1))
-            return int(round(value))
+            # Clean the string
+            power_string = power_string.strip()
             
-        except ValueError as e:
+            # Handle scientific notation and various formats
+            # Pattern to match: optional negative sign, number (with optional decimal), optional E notation, optional units
+            patterns = [
+                # Scientific notation: 8E+2, 1.5E+3, -8E+2, etc.
+                r'(-?[\d.]+[Ee][+-]?\d+)',
+                # Regular decimal numbers: 100, 1.5, -100, etc.
+                r'(-?[\d.]+)',
+            ]
+            
+            numeric_value = None
+            for pattern in patterns:
+                match = re.search(pattern, power_string)
+                if match:
+                    try:
+                        numeric_value = float(match.group(1))
+                        break
+                    except ValueError:
+                        continue
+            
+            if numeric_value is None:
+                return None
+            
+            # Check for unit multipliers (only kW for individual solar panels)
+            power_string_lower = power_string.lower()
+            if 'kw' in power_string_lower or 'kilowatt' in power_string_lower:
+                numeric_value *= 1000
+            
+            # Convert to integer and validate reasonable range
+            # Use standard rounding: 0.5 and above rounds up
+            result = int(numeric_value + 0.5) if numeric_value >= 0 else int(numeric_value - 0.5)
+            
+            # Sanity check: wattage should be between 0W and 2kW for individual solar panels
+            # Most individual solar panels are under 2kW, but some large panels can be up to 2kW
+            if result < 0 or result > 2000:
+                logger.warning(f"Wattage {result}W seems unreasonable for individual solar panel")
+                return None
+            
+            return result
+            
+        except (ValueError, OverflowError) as e:
             logger.warning(f"Failed to parse power '{power_string}': {e}")
             return None
     
@@ -296,11 +341,18 @@ class ScraperAPIParser:
             # System voltages can be 600V, 1000V, 1500V
             # We'll store them but they should be interpreted carefully
             
+            # Get ASIN early for error logging
+            asin = api_response.get('asin') or product_info.get('ASIN')
+            
             # Parse price
             price_str = api_response.get('pricing', '')
             price_usd = UnitConverter.parse_price_string(price_str)
             if not price_usd:
-                logger.error(f"Failed to parse price: {price_str}")
+                # Enhanced error logging with relevant fields for debugging
+                logger.error(f"Failed to parse price: '{price_str}'")
+                logger.error(f"ASIN: {asin}, Name: {name}, Manufacturer: {manufacturer}")
+                logger.error(f"Available pricing data: {api_response.get('pricing', 'N/A')}")
+                logger.error(f"Product info keys: {list(product_info.keys()) if product_info else 'None'}")
                 return None
             
             # Optional fields
@@ -308,7 +360,6 @@ class ScraperAPIParser:
             image_url = api_response.get('images', [None])[0]
             
             # Construct Amazon URL from ASIN
-            asin = api_response.get('asin') or product_info.get('ASIN')
             web_url = f"https://www.amazon.com/dp/{asin}" if asin else None
             
             # Build database-ready dictionary
@@ -408,6 +459,14 @@ class ScraperAPIClient:
             if self.logger:
                 self.logger.log_scraper_request(url, False, error=str(e), asin=asin)
             logger.error(f"ScraperAPI request failed for ASIN {asin}: {e}")
+            
+            # Check for 403 Forbidden error (API key issues, rate limits, etc.)
+            if hasattr(e, 'response') and e.response is not None:
+                if e.response.status_code == 403:
+                    logger.critical(f"ScraperAPI 403 Forbidden error detected for ASIN {asin}. This indicates API key issues or rate limiting. Stopping processing.")
+                    # Raise a special exception that will be caught by the ingest script
+                    raise ScraperAPIForbiddenError(f"ScraperAPI 403 Forbidden: {str(e)}")
+            
             return None
         except Exception as e:
             if self.logger:
@@ -561,6 +620,14 @@ class ScraperAPIClient:
             if self.logger:
                 self.logger.log_scraper_request(search_url, False, error=str(e))
             logger.error(f"ScraperAPI search request failed for keyword '{keyword}': {e}")
+            
+            # Check for 403 Forbidden error (API key issues, rate limits, etc.)
+            if hasattr(e, 'response') and e.response is not None:
+                if e.response.status_code == 403:
+                    logger.critical(f"ScraperAPI 403 Forbidden error detected for search '{keyword}'. This indicates API key issues or rate limiting. Stopping processing.")
+                    # Raise a special exception that will be caught by the search script
+                    raise ScraperAPIForbiddenError(f"ScraperAPI 403 Forbidden: {str(e)}")
+            
             return None
         except Exception as e:
             if self.logger:

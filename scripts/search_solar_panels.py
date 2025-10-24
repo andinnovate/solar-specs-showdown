@@ -14,7 +14,7 @@ from typing import List
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.logging_config import ScriptExecutionContext
-from scripts.scraper import ScraperAPIClient
+from scripts.scraper import ScraperAPIClient, ScraperAPIForbiddenError
 from scripts.asin_manager import ASINManager
 from scripts.product_filter import ProductFilter
 from scripts.config import config
@@ -90,6 +90,7 @@ async def search_and_stage(
     pages: int,
     scraper: ScraperAPIClient,
     asin_manager: ASINManager,
+    product_filter: ProductFilter,
     logger,
     priority: int = 0,
     dump_response_file: str = None
@@ -117,7 +118,14 @@ async def search_and_stage(
         logger.log_script_event("INFO", f"Searching page {page}/{pages} for '{keyword}'...")
         
         # Perform search
-        search_results = scraper.search_amazon(keyword, page=page)
+        try:
+            search_results = scraper.search_amazon(keyword, page=page)
+        except ScraperAPIForbiddenError as e:
+            # 403 Forbidden error - stop processing
+            logger.log_script_event("CRITICAL", f"ScraperAPI 403 Forbidden error: {str(e)}")
+            logger.log_script_event("CRITICAL", "Stopping search due to API access issues.")
+            logger.log_script_event("CRITICAL", "Please check ScraperAPI credentials and rate limits.")
+            return stats  # Return current stats without processing more pages
         
         # Save response for debugging if requested (only first page)
         if page == 1 and dump_response_file:
@@ -317,6 +325,7 @@ async def main():
                     pages=args.pages,
                     scraper=scraper,
                     asin_manager=asin_manager,
+                    product_filter=product_filter,
                     logger=logger,
                     priority=args.priority,
                     dump_response_file=args.dump_response

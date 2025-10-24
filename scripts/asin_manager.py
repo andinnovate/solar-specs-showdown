@@ -209,13 +209,14 @@ class ASINManager:
             logger.error(f"Failed to mark ASIN as completed: {e}")
             return False
     
-    async def mark_asin_failed(self, asin: str, error_message: str) -> bool:
+    async def mark_asin_failed(self, asin: str, error_message: str, is_permanent: bool = False) -> bool:
         """
         Mark ASIN ingestion as failed.
         
         Args:
             asin: Amazon Standard Identification Number
             error_message: Reason for failure
+            is_permanent: If True, mark as failed permanently (no retry)
             
         Returns:
             True if successfully updated
@@ -228,12 +229,19 @@ class ASINManager:
                 attempts = current.data[0].get('attempts', 0)
                 max_attempts = current.data[0].get('max_attempts', 3)
                 
-                # If we've exceeded max attempts, mark as failed permanently
-                if attempts >= max_attempts:
+                # Determine status based on failure type and attempts
+                if is_permanent:
+                    # Permanent failures (parsing errors, data issues) should not be retried
                     status = 'failed'
+                    logger.warning(f"Permanent failure for ASIN {asin}: {error_message}")
+                elif attempts >= max_attempts:
+                    # Exceeded max attempts, mark as failed permanently
+                    status = 'failed'
+                    logger.warning(f"Max attempts exceeded for ASIN {asin}: {error_message}")
                 else:
-                    # Otherwise, reset to pending for retry
+                    # Temporary failure, reset to pending for retry
                     status = 'pending'
+                    logger.info(f"Temporary failure for ASIN {asin}, will retry: {error_message}")
             else:
                 status = 'failed'
             

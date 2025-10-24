@@ -36,7 +36,7 @@ class TestUnitConversions:
         assert UnitConverter.parse_power_string("100 Watts") == 100
         assert UnitConverter.parse_power_string("100W") == 100
         assert UnitConverter.parse_power_string("100") == 100
-        assert UnitConverter.parse_power_string("200.5 Watts") == 200  # Rounds to integer
+        assert UnitConverter.parse_power_string("200.5 Watts") == 201  # Rounds to integer
     
     def test_parse_voltage_string(self):
         """Test voltage string parsing"""
@@ -257,7 +257,8 @@ def test_voltage_parsing_parametrized(input_str, expected):
     ("100 Watts", 100),
     ("100W", 100),
     ("100", 100),
-    ("200.5 Watts", 200),  # Rounds to integer (standard rounding)
+    ("200.4 Watts", 200),  # Rounds to integer (standard rounding)
+    ("200.5 Watts", 201),  # Rounds to integer (standard rounding)
     ("200.6 Watts", 201),  # Rounds up
 ])
 def test_power_parsing_parametrized(input_str, expected):

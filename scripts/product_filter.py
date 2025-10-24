@@ -113,20 +113,32 @@ class ProductFilter:
         Returns:
             Wattage in watts, or None if not found
         """
-        # Patterns to match wattage
+        # More comprehensive patterns to match wattage
         wattage_patterns = [
-            r'(\d+)\s*W\b',           # "100W"
-            r'(\d+)\s*Watt\b',        # "100 Watt" 
-            r'(\d+)\s*Watts\b',       # "100 Watts"
-            r'(\d+)\s*W\s+',          # "100W " (with space)
+            # Scientific notation: 8E+2, 1.5E+3, etc.
+            r'([\d.]+[Ee][+-]?\d+)\s*W\b',
+            r'([\d.]+[Ee][+-]?\d+)\s*Watt\b',
+            r'([\d.]+[Ee][+-]?\d+)\s*Watts\b',
+            # Regular decimal numbers with units
+            r'([\d.]+)\s*W\b',
+            r'([\d.]+)\s*Watt\b', 
+            r'([\d.]+)\s*Watts\b',
+            r'([\d.]+)\s*W\s+',
+            # Kilowatt patterns
+            r'([\d.]+)\s*kW\b',
+            r'([\d.]+)\s*kilowatt\b',
+            r'([\d.]+)\s*kilowatts\b',
         ]
         
         for pattern in wattage_patterns:
             match = re.search(pattern, name, re.IGNORECASE)
             if match:
                 try:
-                    return int(match.group(1))
-                except ValueError:
+                    # Use the same robust parsing as UnitConverter
+                    from scripts.scraper import UnitConverter
+                    wattage_str = match.group(0)  # Get the full match including units
+                    return UnitConverter.parse_power_string(wattage_str)
+                except (ValueError, ImportError):
                     continue
         
         return None
