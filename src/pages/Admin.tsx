@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User, Shield, X } from "lucide-react";
+import { Upload, Database, FileText, Settings, LogIn, LogOut, AlertCircle, User, Shield, X, Flag } from "lucide-react";
 import { CSVImporterComplete } from "@/components/CSVImporterComplete";
 import { UserManagement } from "@/components/UserManagement";
 import { DevSupabaseConfig } from "@/components/DevSupabaseConfig";
 import { DatabaseManager } from "@/components/DatabaseManager";
+import { FlagQueue } from "@/components/FlagQueue";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
 import { isAdminUser } from "@/lib/adminUtils";
@@ -283,7 +284,7 @@ const Admin = () => {
           </div>
         ) : (
           <Tabs defaultValue="import" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="import" className="flex items-center gap-2">
                 <Upload className="w-4 h-4" />
                 CSV Import
@@ -291,6 +292,10 @@ const Admin = () => {
               <TabsTrigger value="database" className="flex items-center gap-2">
                 <Database className="w-4 h-4" />
                 Database
+              </TabsTrigger>
+              <TabsTrigger value="flags" className="flex items-center gap-2">
+                <Flag className="w-4 h-4" />
+                Flag Queue
               </TabsTrigger>
               <TabsTrigger value="logs" className="flex items-center gap-2">
                 <FileText className="w-4 h-4" />
@@ -333,6 +338,10 @@ const Admin = () => {
                   <DatabaseManager />
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="flags" className="space-y-6">
+              <FlagQueue />
             </TabsContent>
 
             <TabsContent value="logs" className="space-y-6">

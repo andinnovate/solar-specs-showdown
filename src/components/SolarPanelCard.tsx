@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/unitConversions";
+import { FlagIcon } from "@/components/FlagIcon";
+import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
 import { useState, useEffect } from "react";
 
 interface SolarPanel {
@@ -16,9 +18,14 @@ interface SolarPanel {
   wattage: number;
   voltage: number;
   price_usd: number;
-  description?: string;
-  image_url?: string;
-  web_url?: string | null;
+  description: string;
+  image_url: string;
+  web_url: string;
+  flag_count?: number;
+  user_verified_overrides?: string[];
+  pending_flags?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface SolarPanelCardProps {
@@ -46,6 +53,9 @@ export const SolarPanelCard = ({
   showUserActions = false,
   unitSystem = 'metric'
 }: SolarPanelCardProps) => {
+  const [showFlagModal, setShowFlagModal] = useState(false);
+  const [flagLoading, setFlagLoading] = useState(false);
+  
   const pricePerWatt = (panel.price_usd / panel.wattage).toFixed(2);
   const wattsPerKg = (panel.wattage / panel.weight_kg).toFixed(2);
   const areaM2 = ((panel.length_cm * panel.width_cm) / 10000).toFixed(2);
@@ -76,28 +86,39 @@ export const SolarPanelCard = ({
             <EyeOff className="w-12 h-12 text-muted-foreground" />
           </div>
         )}
-        {showUserActions && (
-          <div className="absolute top-2 right-2 flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 bg-background/80 hover:bg-background"
-              onClick={() => onToggleHidden?.(panel.id)}
-              title={isHidden ? "Show panel" : "Hide panel"}
-            >
-              {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 bg-background/80 hover:bg-background"
-              onClick={() => onToggleFavorite?.(panel.id)}
-              title={isFavorite ? "Remove from favorites" : "Add to favorites"}
-            >
-              <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-            </Button>
-          </div>
-        )}
+        <div className="absolute top-2 right-2 flex gap-1">
+          <FlagIcon
+            panelId={panel.id}
+            flagCount={panel.flag_count || 0}
+            flaggedFields={panel.user_verified_overrides || []}
+            pendingFlags={panel.pending_flags || 0}
+            onFlag={() => setShowFlagModal(true)}
+            className="bg-background/80 hover:bg-background rounded p-1"
+            size="sm"
+          />
+          {showUserActions && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 bg-background/80 hover:bg-background"
+                onClick={() => onToggleHidden?.(panel.id)}
+                title={isHidden ? "Show panel" : "Hide panel"}
+              >
+                {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 bg-background/80 hover:bg-background"
+                onClick={() => onToggleFavorite?.(panel.id)}
+                title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+              >
+                <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
       
       <CardHeader>
@@ -216,6 +237,63 @@ export const SolarPanelCard = ({
           </div>
         </div>
       </CardContent>
+
+      {/* Flag Submission Modal */}
+      <FlagSubmissionModal
+        panel={panel}
+        isOpen={showFlagModal}
+        onClose={() => setShowFlagModal(false)}
+        onSubmit={async (flagData) => {
+          setFlagLoading(true);
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            
+            // Get current user
+            const { data: { user }, error: userError } = await supabase.auth.getUser();
+            if (userError || !user) {
+              throw new Error('You must be logged in to submit flags');
+            }
+
+            console.log('Current user:', user.id, user.email);
+
+            // Submit flag to database
+            const { data, error } = await supabase
+              .from('user_flags')
+              .insert({
+                panel_id: panel.id,
+                user_id: user.id,
+                flagged_fields: flagData.flaggedFields, // This should be JSONB array
+                suggested_corrections: flagData.suggestedCorrections, // This should be JSONB object
+                user_comment: flagData.userComment,
+                status: 'pending'
+              })
+              .select()
+              .single();
+
+            if (error) {
+              // Check if it's a table doesn't exist error
+              if (error.message.includes('relation "user_flags" does not exist')) {
+                throw new Error('Flag submission system is not yet set up. Please contact an administrator.');
+              }
+              throw new Error(`Failed to submit flag: ${error.message}`);
+            }
+
+            console.log('Flag submitted successfully:', data);
+            setShowFlagModal(false);
+            
+            // Show success message (you might want to add a toast notification here)
+            alert('Flag submitted successfully! Thank you for helping improve our data.');
+            
+          } catch (error) {
+            console.error('Failed to submit flag:', error);
+            alert(`Failed to submit flag: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          } finally {
+            setFlagLoading(false);
+          }
+        }}
+        loading={flagLoading}
+        unitSystem={unitSystem}
+      />
     </Card>
   );
 };

@@ -25,9 +25,14 @@ interface SolarPanel {
   wattage: number;
   voltage: number;
   price_usd: number;
-  description?: string;
-  image_url?: string;
-  web_url?: string | null;
+  description: string;
+  image_url: string;
+  web_url: string;
+  flag_count?: number;
+  user_verified_overrides?: string[];
+  pending_flags?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 type ViewMode = 'cards' | 'list';
@@ -94,7 +99,7 @@ const Index = () => {
   };
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
-  const [user, setUser] = useState<{ email?: string } | null>(null);
+  const [user, setUser] = useState<{ id?: string; email?: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {

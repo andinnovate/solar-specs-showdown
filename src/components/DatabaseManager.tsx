@@ -15,7 +15,7 @@ import {
   DialogTitle, 
   DialogFooter 
 } from "@/components/ui/dialog";
-import { Trash2, Edit2, Save, X, Lock, AlertCircle, Search } from "lucide-react";
+import { Trash2, Edit2, Save, X, Lock, AlertCircle, Search, ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 
 type SolarPanel = Tables<"solar_panels">;
@@ -216,6 +216,19 @@ export const DatabaseManager = () => {
             const manualOverrides = panel.manual_overrides || [];
             const hasManualOverride = (field: string) => manualOverrides.includes(field);
 
+            const swapLengthWidth = () => {
+              if (!isEditing) return;
+              
+              const currentLength = currentPanel.length_cm;
+              const currentWidth = currentPanel.width_cm;
+              
+              setEditedPanel({
+                ...editedPanel,
+                length_cm: currentWidth,
+                width_cm: currentLength,
+              });
+            };
+
             return (
               <Card key={panel.id} className={isEditing ? "border-primary" : ""}>
                 <CardContent className="pt-6">
@@ -345,7 +358,7 @@ export const DatabaseManager = () => {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-4 gap-4">
                         <div className="space-y-2">
                           <Label className="flex items-center gap-2">
                             Length (cm)
@@ -396,6 +409,20 @@ export const DatabaseManager = () => {
                             <p className="text-sm">{panel.width_cm}</p>
                           )}
                         </div>
+                        {isEditing && (
+                          <div className="flex items-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={swapLengthWidth}
+                              className="w-full h-10"
+                              title="Swap length and width values"
+                            >
+                              <ArrowLeftRight className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                         <div className="space-y-2">
                           <Label className="flex items-center gap-2">
                             Weight (kg)
