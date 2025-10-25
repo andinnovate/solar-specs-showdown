@@ -19,6 +19,45 @@ from scripts.asin_manager import ASINManager
 from scripts.database import SolarPanelDB
 from scripts.config import config
 from supabase import create_client
+import json
+
+
+async def save_raw_scraper_data(asin: str, panel_id: str, raw_response: dict, metadata: dict):
+    """
+    Save raw ScraperAPI JSON data to the database for future analysis.
+    
+    Args:
+        asin: Amazon Standard Identification Number
+        panel_id: UUID of the created panel
+        raw_response: Raw JSON response from ScraperAPI
+        metadata: Processing metadata (timing, size, etc.)
+    """
+    try:
+        client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        
+        # Calculate response size
+        response_size = len(json.dumps(raw_response).encode('utf-8'))
+        
+        # Prepare data for insertion
+        raw_data = {
+            'asin': asin,
+            'panel_id': panel_id,
+            'scraper_response': raw_response,
+            'scraper_version': metadata.get('scraper_version', 'v1'),
+            'response_size_bytes': response_size,
+            'processing_metadata': metadata
+        }
+        
+        # Insert into raw_scraper_data table
+        result = client.table('raw_scraper_data').insert(raw_data).execute()
+        
+        if result.data:
+            print(f"Saved raw JSON data for ASIN {asin} ({response_size} bytes)")
+        else:
+            print(f"Failed to save raw JSON data for ASIN {asin}")
+            
+    except Exception as e:
+        print(f"Error saving raw JSON data for ASIN {asin}: {e}")
 
 
 async def log_filtered_asin(asin: str, filter_stage: str, filter_reason: str, 
@@ -120,8 +159,19 @@ async def ingest_single_asin(
             await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
             return False
         
+        # Extract parsed data and raw response from the new format
+        parsed_data = product_data.get('parsed_data')
+        raw_response = product_data.get('raw_response')
+        metadata = product_data.get('metadata', {})
+        
+        if not parsed_data:
+            error_msg = f"Failed to parse product data for ASIN: {asin}"
+            logger.log_script_event("ERROR", error_msg)
+            await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
+            return False
+        
         # Apply wattage filtering
-        wattage = product_data.get('wattage')
+        wattage = parsed_data.get('wattage')
         if wattage is not None and wattage < 30:
             filter_reason = f"wattage_too_low_{wattage}W"
             logger.log_script_event("INFO", f"Filtering ASIN {asin}: {filter_reason}")
@@ -131,8 +181,8 @@ async def ingest_single_asin(
                 asin=asin,
                 filter_stage='ingest',
                 filter_reason=filter_reason,
-                product_name=product_data.get('name', ''),
-                product_url=product_data.get('web_url', ''),
+                product_name=parsed_data.get('name', ''),
+                product_url=parsed_data.get('web_url', ''),
                 wattage=wattage,
                 confidence=0.95
             )
@@ -141,20 +191,23 @@ async def ingest_single_asin(
             await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}")
             return False
         
-        # Add ASIN to product data
-        product_data['asin'] = asin
+        # Add ASIN to parsed data
+        parsed_data['asin'] = asin
         
         # Insert into database
-        panel_id = await db.add_new_panel(product_data)
+        panel_id = await db.add_new_panel(parsed_data)
         
         if panel_id:
             logger.log_script_event(
                 "INFO",
-                f"✓ Successfully ingested {product_data['name'][:60]}... (panel_id: {panel_id})"
+                f"✓ Successfully ingested {parsed_data['name'][:60]}... (panel_id: {panel_id})"
             )
             
             # Mark as completed
             await asin_manager.mark_asin_completed(asin, panel_id)
+            
+            # Save raw JSON data for future analysis
+            await save_raw_scraper_data(asin, panel_id, raw_response, metadata)
             
             # Track scraper usage
             await db.track_scraper_usage(
@@ -167,7 +220,7 @@ async def ingest_single_asin(
             return True
         else:
             error_msg = "Failed to insert panel into database"
-            logger.log_script_event("ERROR", f"{error_msg}: {product_data['name'][:60]}")
+            logger.log_script_event("ERROR", f"{error_msg}: {parsed_data['name'][:60]}")
             await asin_manager.mark_asin_failed(asin, error_msg)
             return False
             

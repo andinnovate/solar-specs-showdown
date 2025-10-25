@@ -411,7 +411,11 @@ class ScraperAPIClient:
             country_code: Amazon marketplace (default: 'us')
             
         Returns:
-            Parsed product data ready for database insertion, or None if failed
+            Dict containing:
+            - 'parsed_data': Parsed product data ready for database insertion
+            - 'raw_response': Raw JSON response from ScraperAPI
+            - 'metadata': Processing metadata (size, timing, etc.)
+            Or None if failed
         """
         url = f"https://www.amazon.com/dp/{asin}"
         
@@ -449,7 +453,26 @@ class ScraperAPIClient:
                         "INFO", 
                         f"Successfully parsed product: {parsed_data['name']}"
                     )
-                return parsed_data
+                
+                # Calculate response size
+                import json
+                response_size = len(json.dumps(api_data).encode('utf-8'))
+                
+                # Create metadata
+                metadata = {
+                    'response_time_ms': response_time_ms,
+                    'response_size_bytes': response_size,
+                    'scraper_version': 'v1',
+                    'country_code': country_code,
+                    'url': url
+                }
+                
+                # Return both parsed data and raw response
+                return {
+                    'parsed_data': parsed_data,
+                    'raw_response': api_data,
+                    'metadata': metadata
+                }
             else:
                 if self.logger:
                     self.logger.log_script_event("ERROR", f"Failed to parse product data for ASIN: {asin}")

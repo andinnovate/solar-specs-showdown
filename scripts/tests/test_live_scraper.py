@@ -48,24 +48,32 @@ class TestScraperAPIIntegration:
         # Verify we got parsed data back
         assert product_data is not None
         
-        # Verify required fields are present
-        assert 'name' in product_data
-        assert 'manufacturer' in product_data
-        assert 'length_cm' in product_data
-        assert 'width_cm' in product_data
-        assert 'weight_kg' in product_data
-        assert 'wattage' in product_data
-        assert 'voltage' in product_data
-        assert 'price_usd' in product_data
+        # Verify the new return format structure
+        assert 'parsed_data' in product_data
+        assert 'raw_response' in product_data
+        assert 'metadata' in product_data
+        
+        # Get the parsed data for verification
+        parsed_data = product_data['parsed_data']
+        
+        # Verify required fields are present in parsed_data
+        assert 'name' in parsed_data
+        assert 'manufacturer' in parsed_data
+        assert 'length_cm' in parsed_data
+        assert 'width_cm' in parsed_data
+        assert 'weight_kg' in parsed_data
+        assert 'wattage' in parsed_data
+        assert 'voltage' in parsed_data
+        assert 'price_usd' in parsed_data
         
         # Verify values match expected conversions
-        assert product_data['manufacturer'] == "FivstaSola"
-        assert product_data['length_cm'] == 116.00
-        assert product_data['width_cm'] == 44.98
-        assert product_data['weight_kg'] == 7.20
-        assert product_data['wattage'] == 100
-        assert product_data['voltage'] == 12.0
-        assert product_data['price_usd'] == 69.99
+        assert parsed_data['manufacturer'] == "FivstaSola"
+        assert parsed_data['length_cm'] == 116.00
+        assert parsed_data['width_cm'] == 44.98
+        assert parsed_data['weight_kg'] == 7.20
+        assert parsed_data['wattage'] == 100
+        assert parsed_data['voltage'] == 12.0
+        assert parsed_data['price_usd'] == 69.99
     
     def test_fetch_renogy_product_different_format(self, scraper_client, mocker):
         """Test fetching product with different dimension format (43 x 33.9 x 0.1 inches)"""
@@ -83,16 +91,19 @@ class TestScraperAPIIntegration:
         # Verify parsing succeeded
         assert product_data is not None
         
+        # Get the parsed data for verification
+        parsed_data = product_data['parsed_data']
+        
         # Verify dimension parsing worked (this was failing before)
-        assert product_data['length_cm'] == 109.22  # 43 inches
-        assert product_data['width_cm'] == 86.11    # 33.9 inches
-        assert product_data['length_cm'] > product_data['width_cm']
+        assert parsed_data['length_cm'] == 109.22  # 43 inches
+        assert parsed_data['width_cm'] == 86.11    # 33.9 inches
+        assert parsed_data['length_cm'] > parsed_data['width_cm']
         
         # Verify other fields
-        assert product_data['manufacturer'] == "Renogy"
-        assert product_data['weight_kg'] == 2.0  # 4.4 pounds
-        assert product_data['wattage'] == 100
-        assert product_data['voltage'] == 18.0
+        assert parsed_data['manufacturer'] == "Renogy"
+        assert parsed_data['weight_kg'] == 2.0  # 4.4 pounds
+        assert parsed_data['wattage'] == 100
+        assert parsed_data['voltage'] == 18.0
     
     def test_fetch_product_data_types(self, scraper_client, mocker):
         """Test that fetched data has correct types"""
@@ -107,18 +118,21 @@ class TestScraperAPIIntegration:
         
         assert product_data is not None
         
+        # Get the parsed data for verification
+        parsed_data = product_data['parsed_data']
+        
         # Verify data types
-        assert isinstance(product_data['name'], str)
-        assert isinstance(product_data['manufacturer'], str)
-        assert isinstance(product_data['length_cm'], (int, float))
-        assert isinstance(product_data['width_cm'], (int, float))
-        assert isinstance(product_data['weight_kg'], (int, float))
-        assert isinstance(product_data['wattage'], int)
-        assert isinstance(product_data['price_usd'], (int, float))
+        assert isinstance(parsed_data['name'], str)
+        assert isinstance(parsed_data['manufacturer'], str)
+        assert isinstance(parsed_data['length_cm'], (int, float))
+        assert isinstance(parsed_data['width_cm'], (int, float))
+        assert isinstance(parsed_data['weight_kg'], (int, float))
+        assert isinstance(parsed_data['wattage'], int)
+        assert isinstance(parsed_data['price_usd'], (int, float))
         
         # Voltage can be None or numeric
-        if product_data['voltage'] is not None:
-            assert isinstance(product_data['voltage'], (int, float))
+        if parsed_data['voltage'] is not None:
+            assert isinstance(parsed_data['voltage'], (int, float))
     
     def test_fetch_product_reasonable_values(self, scraper_client, mocker):
         """Test that fetched values are within reasonable ranges"""
@@ -133,23 +147,26 @@ class TestScraperAPIIntegration:
         
         assert product_data is not None
         
+        # Get the parsed data for verification
+        parsed_data = product_data['parsed_data']
+        
         # Dimensions should be positive and reasonable for solar panels
-        assert 0 < product_data['length_cm'] < 500  # Up to 5 meters
-        assert 0 < product_data['width_cm'] < 300   # Up to 3 meters
-        assert product_data['length_cm'] >= product_data['width_cm']
+        assert 0 < parsed_data['length_cm'] < 500  # Up to 5 meters
+        assert 0 < parsed_data['width_cm'] < 300   # Up to 3 meters
+        assert parsed_data['length_cm'] >= parsed_data['width_cm']
         
         # Weight should be positive and reasonable
-        assert 0 < product_data['weight_kg'] < 100  # Up to 100 kg
+        assert 0 < parsed_data['weight_kg'] < 100  # Up to 100 kg
         
         # Wattage should be positive
-        assert 0 < product_data['wattage'] < 10000  # Up to 10kW
+        assert 0 < parsed_data['wattage'] < 10000  # Up to 10kW
         
         # Voltage should be reasonable if present
-        if product_data['voltage']:
-            assert 0 < product_data['voltage'] < 1000  # Up to 1000V
+        if parsed_data['voltage']:
+            assert 0 < parsed_data['voltage'] < 1000  # Up to 1000V
         
         # Price should be positive
-        assert 0 < product_data['price_usd'] < 10000  # Up to $10k
+        assert 0 < parsed_data['price_usd'] < 10000  # Up to $10k
     
     def test_fetch_product_web_url_format(self, scraper_client, mocker):
         """Test that web_url is properly formatted"""
@@ -164,9 +181,13 @@ class TestScraperAPIIntegration:
         product_data = scraper_client.fetch_product(test_asin)
         
         assert product_data is not None
-        assert 'web_url' in product_data
-        assert product_data['web_url'].startswith('https://www.amazon.com/dp/')
-        assert test_asin in product_data['web_url']
+        
+        # Get the parsed data for verification
+        parsed_data = product_data['parsed_data']
+        
+        assert 'web_url' in parsed_data
+        assert parsed_data['web_url'].startswith('https://www.amazon.com/dp/')
+        assert test_asin in parsed_data['web_url']
 
 
 class TestAmazonSearch:

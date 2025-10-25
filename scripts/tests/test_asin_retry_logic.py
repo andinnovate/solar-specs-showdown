@@ -116,13 +116,17 @@ class TestASINRetryLogic:
         # Setup: No existing panel, valid product data
         mock_db.get_panel_by_asin = AsyncMock(return_value=None)  # No existing panel
         product_data = {
-            'name': 'Test Solar Panel',
-            'manufacturer': 'Test Corp',
-            'wattage': 400,
-            'price_usd': 299.99,
-            'length_cm': 200.0,
-            'width_cm': 100.0,
-            'weight_kg': 25.0
+            'parsed_data': {
+                'name': 'Test Solar Panel',
+                'manufacturer': 'Test Corp',
+                'wattage': 400,
+                'price_usd': 299.99,
+                'length_cm': 200.0,
+                'width_cm': 100.0,
+                'weight_kg': 25.0
+            },
+            'raw_response': {'test': 'data'},
+            'metadata': {'test': 'metadata'}
         }
         mock_retry_handler.execute_with_retry = AsyncMock(return_value=product_data)
         mock_db.add_new_panel = AsyncMock(return_value="panel-123")
@@ -177,13 +181,17 @@ class TestASINRetryLogic:
         # Setup: No existing panel, low wattage product
         mock_db.get_panel_by_asin = AsyncMock(return_value=None)  # No existing panel
         product_data = {
-            'name': 'Low Power Panel',
-            'manufacturer': 'Test Corp',
-            'wattage': 20,  # Below 30W threshold
-            'price_usd': 99.99,
-            'length_cm': 50.0,
-            'width_cm': 30.0,
-            'weight_kg': 5.0
+            'parsed_data': {
+                'name': 'Low Power Panel',
+                'manufacturer': 'Test Corp',
+                'wattage': 20,  # Below 30W threshold
+                'price_usd': 99.99,
+                'length_cm': 50.0,
+                'width_cm': 30.0,
+                'weight_kg': 5.0
+            },
+            'raw_response': {'test': 'data'},
+            'metadata': {'test': 'metadata'}
         }
         mock_retry_handler.execute_with_retry = AsyncMock(return_value=product_data)
         
@@ -203,7 +211,7 @@ class TestASINRetryLogic:
         
         # Check that it was marked as failed (filtering is permanent)
         call_args = mock_asin_manager.mark_asin_failed.call_args
-        assert "wattage_too_low" in call_args[0][1]  # error message
+        assert "wattage_too_low_20W" in call_args[0][1]  # error message
         # Note: wattage filtering doesn't use is_permanent parameter in current implementation
     
     def test_asin_manager_permanent_failure(self):
