@@ -48,21 +48,33 @@ class TestRawJSONStorage:
         """Test successful saving of raw JSON data."""
         # Mock Supabase client
         mock_client = MagicMock()
+        
+        # Mock existing record check (no existing records)
+        mock_existing_result = MagicMock()
+        mock_existing_result.data = []  # No existing records
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_existing_result
+        
+        # Mock insert result
         mock_result = MagicMock()
         mock_result.data = [{'id': 'test-id'}]
         mock_client.table.return_value.insert.return_value.execute.return_value = mock_result
         
         with patch('scripts.ingest_staged_asins.create_client', return_value=mock_client):
+            # Mock logger
+            mock_logger = MagicMock()
+            
             # Execute
             await save_raw_scraper_data(
                 asin='B0CPLQGGD7',
                 panel_id='panel-123',
                 raw_response=sample_raw_response,
-                metadata=sample_metadata
+                metadata=sample_metadata,
+                logger=mock_logger
             )
             
             # Verify
-            mock_client.table.assert_called_once_with('raw_scraper_data')
+            assert mock_client.table.call_count == 2  # Once for select, once for insert
+            mock_client.table.assert_any_call('raw_scraper_data')
             insert_call = mock_client.table.return_value.insert
             insert_call.assert_called_once()
             
@@ -80,42 +92,62 @@ class TestRawJSONStorage:
         """Test handling of save failure."""
         # Mock Supabase client that fails
         mock_client = MagicMock()
+        
+        # Mock existing record check (no existing records)
+        mock_existing_result = MagicMock()
+        mock_existing_result.data = []  # No existing records
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_existing_result
+        
+        # Mock insert failure
         mock_result = MagicMock()
         mock_result.data = None  # Simulate failure
         mock_client.table.return_value.insert.return_value.execute.return_value = mock_result
         
         with patch('scripts.ingest_staged_asins.create_client', return_value=mock_client):
-            with patch('builtins.print') as mock_print:
-                # Execute
-                await save_raw_scraper_data(
-                    asin='B0CPLQGGD7',
-                    panel_id='panel-123',
-                    raw_response=sample_raw_response,
-                    metadata=sample_metadata
-                )
-                
-                # Verify error handling
-                mock_print.assert_called_with("Failed to save raw JSON data for ASIN B0CPLQGGD7")
+            # Mock logger
+            mock_logger = MagicMock()
+            
+            # Execute
+            await save_raw_scraper_data(
+                asin='B0CPLQGGD7',
+                panel_id='panel-123',
+                raw_response=sample_raw_response,
+                metadata=sample_metadata,
+                logger=mock_logger
+            )
+            
+            # Verify error handling
+            mock_logger.log_script_event.assert_called_with("ERROR", "Failed to save raw JSON data for ASIN B0CPLQGGD7")
     
     @pytest.mark.asyncio
     async def test_save_raw_scraper_data_exception(self, sample_raw_response, sample_metadata):
         """Test handling of database exception."""
         # Mock Supabase client that raises exception
         mock_client = MagicMock()
+        
+        # Mock existing record check (no existing records)
+        mock_existing_result = MagicMock()
+        mock_existing_result.data = []  # No existing records
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_existing_result
+        
+        # Mock insert exception
         mock_client.table.return_value.insert.return_value.execute.side_effect = Exception("Database error")
         
         with patch('scripts.ingest_staged_asins.create_client', return_value=mock_client):
-            with patch('builtins.print') as mock_print:
-                # Execute
-                await save_raw_scraper_data(
-                    asin='B0CPLQGGD7',
-                    panel_id='panel-123',
-                    raw_response=sample_raw_response,
-                    metadata=sample_metadata
-                )
-                
-                # Verify error handling
-                mock_print.assert_called_with("Error saving raw JSON data for ASIN B0CPLQGGD7: Database error")
+            # Mock logger
+            mock_logger = MagicMock()
+            
+            # Execute
+            await save_raw_scraper_data(
+                asin='B0CPLQGGD7',
+                panel_id='panel-123',
+                raw_response=sample_raw_response,
+                metadata=sample_metadata,
+                logger=mock_logger
+            )
+            
+            # Verify error handling
+            mock_logger.log_script_event.assert_called_with("ERROR", "Error saving raw JSON data for ASIN B0CPLQGGD7: Database error")
     
     def test_response_size_calculation(self, sample_raw_response):
         """Test that response size is calculated correctly."""
@@ -141,17 +173,28 @@ class TestRawJSONStorage:
         
         # Mock Supabase client
         mock_client = MagicMock()
+        
+        # Mock existing record check (no existing records)
+        mock_existing_result = MagicMock()
+        mock_existing_result.data = []  # No existing records
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_existing_result
+        
+        # Mock insert result
         mock_result = MagicMock()
         mock_result.data = [{'id': 'test-id'}]
         mock_client.table.return_value.insert.return_value.execute.return_value = mock_result
         
         with patch('scripts.ingest_staged_asins.create_client', return_value=mock_client):
+            # Mock logger
+            mock_logger = MagicMock()
+            
             # Execute
             await save_raw_scraper_data(
                 asin='B0CPLQGGD7',
                 panel_id='panel-123',
                 raw_response=sample_raw_response,
-                metadata=metadata
+                metadata=metadata,
+                logger=mock_logger
             )
             
             # Verify metadata structure

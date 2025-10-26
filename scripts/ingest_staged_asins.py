@@ -23,18 +23,65 @@ from supabase import create_client
 import json
 
 
-async def save_raw_scraper_data(asin: str, panel_id: Optional[str], raw_response: dict, metadata: dict):
+async def save_raw_scraper_data(asin: str, panel_id: Optional[str], raw_response: dict, metadata: dict, logger):
     """
     Save raw ScraperAPI JSON data to the database for future analysis.
+    Handles existing records by updating them when appropriate.
     
     Args:
         asin: Amazon Standard Identification Number
         panel_id: UUID of the created panel (None for failed scrapes)
         raw_response: Raw JSON response from ScraperAPI
         metadata: Processing metadata (timing, size, etc.)
+        logger: Logger instance for structured logging
     """
     try:
         client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        
+        # Check if raw data already exists for this ASIN
+        existing_result = client.table('raw_scraper_data').select('panel_id, created_at').eq('asin', asin).execute()
+        
+        if existing_result.data:
+            existing_record = existing_result.data[0]
+            existing_panel_id = existing_record.get('panel_id')
+            existing_created_at = existing_record.get('created_at')
+            
+            # If we have a successful panel_id and existing record has NULL panel_id, update it
+            if panel_id and existing_panel_id is None:
+                logger.log_script_event("INFO", f"Updating existing raw data for ASIN {asin} with panel_id {panel_id}")
+                
+                # Calculate response size
+                response_size = len(json.dumps(raw_response).encode('utf-8'))
+                
+                # Update existing record with panel_id
+                update_data = {
+                    'panel_id': panel_id,
+                    'scraper_response': raw_response,
+                    'scraper_version': metadata.get('scraper_version', 'v1'),
+                    'response_size_bytes': response_size,
+                    'processing_metadata': metadata
+                }
+                
+                result = client.table('raw_scraper_data').update(update_data).eq('asin', asin).execute()
+                
+                if result.data:
+                    logger.log_script_event("INFO", f"✓ Updated raw data for ASIN {asin}")
+                else:
+                    logger.log_script_event("ERROR", f"Failed to update raw data for ASIN {asin}")
+                return
+                
+            # If existing record already has a panel_id, skip saving (avoid duplicates)
+            elif existing_panel_id:
+                logger.log_script_event("INFO", f"Raw data already exists for ASIN {asin} with panel_id {existing_panel_id}, skipping")
+                return
+                
+            # If both are None (failed scrapes), skip saving duplicate failure data
+            else:
+                logger.log_script_event("INFO", f"Raw data already exists for failed ASIN {asin}, skipping duplicate")
+                return
+        
+        # No existing record, proceed with insertion
+        logger.log_script_event("INFO", f"Saving new raw data for ASIN {asin}")
         
         # Calculate response size
         response_size = len(json.dumps(raw_response).encode('utf-8'))
@@ -53,12 +100,12 @@ async def save_raw_scraper_data(asin: str, panel_id: Optional[str], raw_response
         result = client.table('raw_scraper_data').insert(raw_data).execute()
         
         if result.data:
-            print(f"Saved raw JSON data for ASIN {asin} ({response_size} bytes)")
+            logger.log_script_event("INFO", f"✓ Saved raw JSON data for ASIN {asin} ({response_size} bytes)")
         else:
-            print(f"Failed to save raw JSON data for ASIN {asin}")
+            logger.log_script_event("ERROR", f"Failed to save raw JSON data for ASIN {asin}")
             
     except Exception as e:
-        print(f"Error saving raw JSON data for ASIN {asin}: {e}")
+        logger.log_script_event("ERROR", f"Error saving raw JSON data for ASIN {asin}: {e}")
 
 
 async def log_filtered_asin(asin: str, filter_stage: str, filter_reason: str, 
@@ -170,7 +217,7 @@ async def ingest_single_asin(
             # Save raw data for failure analysis
             if raw_response:
                 logger.log_script_event("INFO", f"Saving raw response data for failed ASIN: {asin}")
-                await save_raw_scraper_data(asin, None, raw_response, metadata)
+                await save_raw_scraper_data(asin, None, raw_response, metadata, logger)
             
             await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
             return False
@@ -198,7 +245,7 @@ async def ingest_single_asin(
                 # Update metadata to indicate filtering reason
                 metadata['filtered'] = True
                 metadata['filter_reason'] = filter_reason
-                await save_raw_scraper_data(asin, None, raw_response, metadata)
+                await save_raw_scraper_data(asin, None, raw_response, metadata, logger)
             
             # Mark as failed with filter reason
             await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}")
@@ -220,7 +267,7 @@ async def ingest_single_asin(
             await asin_manager.mark_asin_completed(asin, panel_id)
             
             # Save raw JSON data for future analysis
-            await save_raw_scraper_data(asin, panel_id, raw_response, metadata)
+            await save_raw_scraper_data(asin, panel_id, raw_response, metadata, logger)
             
             # Track scraper usage
             await db.track_scraper_usage(
