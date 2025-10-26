@@ -8,7 +8,7 @@ import asyncio
 import argparse
 import sys
 import os
-from typing import Optional
+from typing import Optional, Dict
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -144,6 +144,44 @@ async def log_filtered_asin(asin: str, filter_stage: str, filter_reason: str,
         return None
 
 
+async def check_recent_raw_data(asin: str, hours_threshold: int = 24) -> Optional[Dict]:
+    """
+    Check if we have recent raw response data for an ASIN.
+    
+    Args:
+        asin: Amazon Standard Identification Number
+        hours_threshold: Maximum age in hours for data to be considered recent
+        
+    Returns:
+        Dictionary with raw data if recent, None otherwise
+    """
+    try:
+        from datetime import datetime, timedelta, timezone
+        client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        
+        # Calculate timestamp threshold in Python
+        threshold_time = datetime.now(timezone.utc) - timedelta(hours=hours_threshold)
+        threshold_iso = threshold_time.isoformat()
+        
+        # Query for recent raw data (within threshold hours)
+        result = client.table('raw_scraper_data').select('*').eq('asin', asin).gte(
+            'created_at', 
+            threshold_iso
+        ).order('created_at', desc=True).limit(1).execute()
+        
+        if result.data:
+            raw_data = result.data[0]
+            print(f"Found recent raw data for ASIN {asin} (created: {raw_data.get('created_at')})")
+            return raw_data
+        else:
+            print(f"No recent raw data found for ASIN {asin} (within {hours_threshold} hours)")
+            return None
+            
+    except Exception as e:
+        print(f"Error checking recent raw data for ASIN {asin}: {str(e)}")
+        return None
+
+
 async def ingest_single_asin(
     asin: str,
     scraper: ScraperAPIClient,
@@ -170,27 +208,67 @@ async def ingest_single_asin(
             await asin_manager.mark_asin_failed(asin, "Already exists in database", is_permanent=True)
             return False
         
-        # Fetch product data with retry logic
-        logger.log_script_event("INFO", f"Fetching product details for ASIN: {asin}")
+        # Check for recent raw data before making API calls
+        logger.log_script_event("INFO", f"Checking for recent raw data for ASIN: {asin}")
+        recent_raw_data = await check_recent_raw_data(asin, hours_threshold=24)
         
-        try:
-            product_data = await retry_handler.execute_with_retry(
-                scraper.fetch_product,
-                asin,
-                service_name="scraperapi"
+        if recent_raw_data:
+            # Use existing raw data instead of making API call
+            logger.log_script_event(
+                "INFO", 
+                f"Using existing raw data for ASIN {asin} (saved within 24 hours). Skipping API call."
             )
-        except ScraperAPIForbiddenError as e:
-            # 403 Forbidden error - stop processing and leave ASIN as pending
-            logger.log_script_event("CRITICAL", f"ScraperAPI 403 Forbidden error: {str(e)}")
-            logger.log_script_event("CRITICAL", "Stopping processing due to API access issues. ASINs will remain pending.")
-            logger.log_script_event("CRITICAL", "Please check ScraperAPI credentials and rate limits.")
-            # Don't mark as failed - leave as pending for retry later
-            return False
-        except Exception as e:
-            error_msg = f"Exception during product fetch for ASIN {asin}: {str(e)}"
-            logger.log_script_event("ERROR", error_msg)
-            await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
-            return False
+            
+            # Reconstruct the product_data format from stored raw data
+            raw_response = recent_raw_data.get('raw_response', {})
+            metadata = recent_raw_data.get('processing_metadata', {})
+            
+            # Try to parse the stored raw data
+            from scripts.scraper import ScraperAPIParser
+            parser = ScraperAPIParser()
+            parsed_data = parser.parse_product_data(raw_response)
+            
+            if parsed_data:
+                # Successfully parsed stored data
+                product_data = {
+                    'parsed_data': parsed_data,
+                    'raw_response': raw_response,
+                    'metadata': metadata
+                }
+                logger.log_script_event("INFO", f"Successfully parsed stored raw data for ASIN: {asin}")
+            else:
+                # Parsing failed on stored data
+                product_data = {
+                    'parsed_data': None,
+                    'raw_response': raw_response,
+                    'metadata': metadata
+                }
+                logger.log_script_event("WARNING", f"Failed to parse stored raw data for ASIN: {asin}")
+        else:
+            # No recent data found, proceed with API call
+            logger.log_script_event("INFO", f"No recent raw data found for ASIN: {asin}. Making API call.")
+            
+            # Fetch product data with retry logic
+            logger.log_script_event("INFO", f"Fetching product details for ASIN: {asin}")
+            
+            try:
+                product_data = await retry_handler.execute_with_retry(
+                    scraper.fetch_product,
+                    asin,
+                    service_name="scraperapi"
+                )
+            except ScraperAPIForbiddenError as e:
+                # 403 Forbidden error - stop processing and leave ASIN as pending
+                logger.log_script_event("CRITICAL", f"ScraperAPI 403 Forbidden error: {str(e)}")
+                logger.log_script_event("CRITICAL", "Stopping processing due to API access issues. ASINs will remain pending.")
+                logger.log_script_event("CRITICAL", "Please check ScraperAPI credentials and rate limits.")
+                # Don't mark as failed - leave as pending for retry later
+                return False
+            except Exception as e:
+                error_msg = f"Exception during product fetch for ASIN {asin}: {str(e)}"
+                logger.log_script_event("ERROR", error_msg)
+                await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
+                return False
         
         if not product_data:
             # Check if this is a parsing failure by looking at recent logs
@@ -253,8 +331,8 @@ async def ingest_single_asin(
                 metadata['filter_reason'] = filter_reason
                 await save_raw_scraper_data(asin, None, raw_response, metadata, logger)
             
-            # Mark as failed with filter reason
-            await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}")
+            # Mark as permanently failed with filter reason (filtering criteria won't change)
+            await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}", is_permanent=True)
             return False
         
         # Add ASIN to parsed data
@@ -287,15 +365,15 @@ async def ingest_single_asin(
         else:
             error_msg = "Failed to insert panel into database"
             logger.log_script_event("ERROR", f"{error_msg}: {parsed_data['name'][:60]}")
-            await asin_manager.mark_asin_failed(asin, error_msg)
+            await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
             return False
             
     except Exception as e:
         error_msg = f"Error processing ASIN {asin}: {str(e)}"
         logger.log_script_event("ERROR", error_msg)
         
-        # Mark as failed
-        await asin_manager.mark_asin_failed(asin, str(e))
+        # Mark as permanently failed (general exceptions are unlikely to succeed on retry)
+        await asin_manager.mark_asin_failed(asin, str(e), is_permanent=True)
         
         # Track failed scraper usage
         await db.track_scraper_usage(
