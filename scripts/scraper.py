@@ -477,7 +477,28 @@ class ScraperAPIClient:
             else:
                 if self.logger:
                     self.logger.log_script_event("ERROR", f"Failed to parse product data for ASIN: {asin}")
-                return None
+                
+                # Even when parsing fails, return raw data for analysis
+                # Calculate response size
+                import json
+                response_size = len(json.dumps(api_data).encode('utf-8'))
+                
+                # Create metadata
+                metadata = {
+                    'response_time_ms': response_time_ms,
+                    'response_size_bytes': response_size,
+                    'scraper_version': 'v1',
+                    'country_code': country_code,
+                    'url': url,
+                    'parsing_failed': True,
+                    'failure_reason': 'parsing_error'
+                }
+                
+                return {
+                    'parsed_data': None,
+                    'raw_response': api_data,
+                    'metadata': metadata
+                }
                 
         except requests.exceptions.RequestException as e:
             if self.logger:

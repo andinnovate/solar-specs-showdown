@@ -343,8 +343,12 @@ class TestErrorHandling:
         
         product_data = scraper_client.fetch_product("B0C99GS958")
         
-        # Should return None when required fields are missing
-        assert product_data is None
+        # Should return dict with parsed_data=None when required fields are missing
+        assert product_data is not None
+        assert product_data['parsed_data'] is None
+        assert product_data['raw_response'] is not None
+        assert product_data['metadata']['parsing_failed'] is True
+        assert product_data['metadata']['failure_reason'] == 'parsing_error'
 
 
 @pytest.mark.live_api

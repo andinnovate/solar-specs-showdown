@@ -8,6 +8,7 @@ import asyncio
 import argparse
 import sys
 import os
+from typing import Optional
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,13 +23,13 @@ from supabase import create_client
 import json
 
 
-async def save_raw_scraper_data(asin: str, panel_id: str, raw_response: dict, metadata: dict):
+async def save_raw_scraper_data(asin: str, panel_id: Optional[str], raw_response: dict, metadata: dict):
     """
     Save raw ScraperAPI JSON data to the database for future analysis.
     
     Args:
         asin: Amazon Standard Identification Number
-        panel_id: UUID of the created panel
+        panel_id: UUID of the created panel (None for failed scrapes)
         raw_response: Raw JSON response from ScraperAPI
         metadata: Processing metadata (timing, size, etc.)
     """
@@ -41,7 +42,7 @@ async def save_raw_scraper_data(asin: str, panel_id: str, raw_response: dict, me
         # Prepare data for insertion
         raw_data = {
             'asin': asin,
-            'panel_id': panel_id,
+            'panel_id': panel_id,  # Can be None for failed scrapes
             'scraper_response': raw_response,
             'scraper_version': metadata.get('scraper_version', 'v1'),
             'response_size_bytes': response_size,
@@ -165,8 +166,15 @@ async def ingest_single_asin(
         metadata = product_data.get('metadata', {})
         
         if not parsed_data:
+            # Parsing failed, but we still have raw data to save
             error_msg = f"Failed to parse product data for ASIN: {asin}"
             logger.log_script_event("ERROR", error_msg)
+            
+            # Save raw data for failure analysis
+            if raw_response:
+                logger.log_script_event("INFO", f"Saving raw response data for failed ASIN: {asin}")
+                await save_raw_scraper_data(asin, None, raw_response, metadata)
+            
             await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
             return False
         
@@ -186,6 +194,14 @@ async def ingest_single_asin(
                 wattage=wattage,
                 confidence=0.95
             )
+            
+            # Save raw data for filtered ASINs too (for analysis)
+            if raw_response:
+                logger.log_script_event("INFO", f"Saving raw response data for filtered ASIN: {asin}")
+                # Update metadata to indicate filtering reason
+                metadata['filtered'] = True
+                metadata['filter_reason'] = filter_reason
+                await save_raw_scraper_data(asin, None, raw_response, metadata)
             
             # Mark as failed with filter reason
             await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}")
