@@ -338,6 +338,10 @@ async def ingest_single_asin(
         # Add ASIN to parsed data
         parsed_data['asin'] = asin
         
+        # Remove parsing_failures from parsed_data before database insertion
+        # (parsing_failures is stored in raw_scraper_data metadata, not solar_panels table)
+        parsed_data.pop('parsing_failures', None)
+        
         # Insert into database
         panel_id = await db.add_new_panel(parsed_data)
         
