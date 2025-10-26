@@ -295,6 +295,9 @@ class ScraperAPIParser:
             Dictionary with database fields or None if parsing fails
         """
         try:
+            # Initialize failure tracking
+            parsing_failures = []
+            
             product_info = api_response.get('product_information', {})
             
             # Get ASIN early for error logging
@@ -303,6 +306,7 @@ class ScraperAPIParser:
             # Required fields
             name = api_response.get('name')
             if not name:
+                parsing_failures.append("Missing product name")
                 logger.error("Product name is missing")
                 return None
             
@@ -316,6 +320,7 @@ class ScraperAPIParser:
             dimensions_str = product_info.get('Product Dimensions', '')
             dimensions = UnitConverter.parse_dimension_string(dimensions_str)
             if not dimensions:
+                parsing_failures.append(f"Failed to parse dimensions: '{dimensions_str}'")
                 logger.error(f"Failed to parse dimensions: {dimensions_str}")
                 return None
             length_cm, width_cm = dimensions
@@ -324,6 +329,7 @@ class ScraperAPIParser:
             weight_str = product_info.get('Item Weight', '')
             weight_kg = UnitConverter.parse_weight_string(weight_str)
             if not weight_kg:
+                parsing_failures.append(f"Failed to parse weight: '{weight_str}'")
                 logger.error(f"Failed to parse weight: {weight_str}")
                 return None
             
@@ -331,6 +337,7 @@ class ScraperAPIParser:
             wattage_str = product_info.get('Maximum Power', '')
             wattage = UnitConverter.parse_power_string(wattage_str, context=f"ASIN {asin}")
             if not wattage:
+                parsing_failures.append(f"Failed to parse wattage: '{wattage_str}'")
                 logger.error(f"Failed to parse wattage: {wattage_str}")
                 return None
             
@@ -349,12 +356,14 @@ class ScraperAPIParser:
             price_str = api_response.get('pricing', '')
             price_usd = UnitConverter.parse_price_string(price_str)
             if not price_usd:
+                parsing_failures.append(f"Failed to parse price: '{price_str}'")
                 # Enhanced error logging with relevant fields for debugging
                 logger.error(f"Failed to parse price: '{price_str}'")
                 logger.error(f"ASIN: {asin}, Name: {name}, Manufacturer: {manufacturer}")
                 logger.error(f"Available pricing data: {api_response.get('pricing', 'N/A')}")
                 logger.error(f"Product info keys: {list(product_info.keys()) if product_info else 'None'}")
-                return None
+                # Don't return None for price - it's optional
+                price_usd = None
             
             # Optional fields
             description = api_response.get('full_description', '')[:1000] if api_response.get('full_description') else None
@@ -375,7 +384,8 @@ class ScraperAPIParser:
                 'price_usd': price_usd,
                 'description': description,
                 'image_url': image_url,
-                'web_url': web_url
+                'web_url': web_url,
+                'parsing_failures': parsing_failures  # Add failure details
             }
             
             return panel_data

@@ -222,6 +222,12 @@ async def ingest_single_asin(
             await asin_manager.mark_asin_failed(asin, error_msg, is_permanent=True)
             return False
         
+        # Extract parsing failures from parsed data and add to metadata
+        parsing_failures = parsed_data.get('parsing_failures', [])
+        if parsing_failures:
+            metadata['parsing_failures'] = parsing_failures
+            logger.log_script_event("INFO", f"ASIN {asin} had parsing failures: {', '.join(parsing_failures)}")
+        
         # Apply wattage filtering
         wattage = parsed_data.get('wattage')
         if wattage is not None and wattage < 30:

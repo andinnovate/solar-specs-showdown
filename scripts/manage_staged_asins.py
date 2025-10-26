@@ -346,6 +346,7 @@ async def inspect_asin(asin: str) -> Dict[str, Any]:
                 'Created': format_timestamp(raw_data_info.get('created_at')),
                 'Parsing Failed': raw_data_info.get('processing_metadata', {}).get('parsing_failed', False),
                 'Failure Reason': raw_data_info.get('processing_metadata', {}).get('failure_reason', 'N/A'),
+                'Parsing Failures': ', '.join(raw_data_info.get('processing_metadata', {}).get('parsing_failures', [])),
                 'Filtered': raw_data_info.get('processing_metadata', {}).get('filtered', False),
                 'Filter Reason': raw_data_info.get('processing_metadata', {}).get('filter_reason', 'N/A')
             }
