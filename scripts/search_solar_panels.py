@@ -93,7 +93,8 @@ async def search_and_stage(
     product_filter: ProductFilter,
     logger,
     priority: int = 0,
-    dump_response_file: str = None
+    dump_response_file: str = None,
+    start_page: int = 1
 ) -> dict:
     """
     Search for a keyword and stage discovered ASINs.
@@ -114,8 +115,9 @@ async def search_and_stage(
     all_asins = []
     
     # Search multiple pages if requested
-    for page in range(1, pages + 1):
-        logger.log_script_event("INFO", f"Searching page {page}/{pages} for '{keyword}'...")
+    end_page = start_page + pages - 1
+    for page in range(start_page, end_page + 1):
+        logger.log_script_event("INFO", f"Searching page {page}/{end_page} for '{keyword}'...")
         
         # Perform search
         try:
@@ -232,7 +234,9 @@ async def search_and_stage(
 async def main():
     parser = argparse.ArgumentParser(
         description='Search Amazon for solar panels and stage ASINs for ingestion',
-        epilog='Example: python search_solar_panels.py "solar panel 400w" "bifacial solar panel" --pages 2'
+        epilog='Examples:\n'
+               '  python search_solar_panels.py "solar panel 400w" --pages 2\n'
+               '  python search_solar_panels.py "bifacial solar panel" --start-page 11 --pages 10'
     )
     
     parser.add_argument(
@@ -245,6 +249,12 @@ async def main():
         type=int,
         default=1,
         help='Number of pages to search per keyword (default: 1)'
+    )
+    parser.add_argument(
+        '--start-page',
+        type=int,
+        default=1,
+        help='Starting page number (default: 1). Use with --pages to process specific ranges (e.g., --start-page 11 --pages 10 processes pages 11-20)'
     )
     parser.add_argument(
         '--priority',
@@ -271,6 +281,12 @@ async def main():
     )
     
     args = parser.parse_args()
+    
+    # Validate arguments
+    if args.start_page < 1:
+        parser.error("--start-page must be 1 or greater")
+    if args.pages < 1:
+        parser.error("--pages must be 1 or greater")
     
     # Use context manager for logging
     with ScriptExecutionContext('search_solar_panels', 'DEBUG' if args.verbose else 'INFO') as (logger, error_handler):
@@ -328,7 +344,8 @@ async def main():
                     product_filter=product_filter,
                     logger=logger,
                     priority=args.priority,
-                    dump_response_file=args.dump_response
+                    dump_response_file=args.dump_response,
+                    start_page=args.start_page
                 )
                 
                 # Update overall stats
