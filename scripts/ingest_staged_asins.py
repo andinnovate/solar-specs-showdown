@@ -120,7 +120,7 @@ async def ingest_single_asin(
                 "INFO",
                 f"ASIN {asin} already exists in database. Skipping API call to save credits."
             )
-            await asin_manager.mark_asin_failed(asin, "Already exists in database")
+            await asin_manager.mark_asin_failed(asin, "Already exists in database", is_permanent=True)
             return False
         
         # Mark as processing
