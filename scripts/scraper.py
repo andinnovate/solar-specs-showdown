@@ -159,7 +159,7 @@ class UnitConverter:
             return None
     
     @staticmethod
-    def parse_power_string(power_string: str) -> Optional[int]:
+    def parse_power_string(power_string: str, context: str = None) -> Optional[int]:
         """
         Parse power/wattage string into integer watts.
         
@@ -215,7 +215,8 @@ class UnitConverter:
             # Sanity check: wattage should be between 0W and 2kW for individual solar panels
             # Most individual solar panels are under 2kW, but some large panels can be up to 2kW
             if result < 0 or result > 2000:
-                logger.warning(f"Wattage {result}W seems unreasonable for individual solar panel")
+                context_info = f" for {context}" if context else ""
+                logger.warning(f"Wattage {result}W seems unreasonable for individual solar panel{context_info}")
                 return None
             
             return result
@@ -296,6 +297,9 @@ class ScraperAPIParser:
         try:
             product_info = api_response.get('product_information', {})
             
+            # Get ASIN early for error logging
+            asin = api_response.get('asin') or product_info.get('ASIN')
+            
             # Required fields
             name = api_response.get('name')
             if not name:
@@ -325,7 +329,7 @@ class ScraperAPIParser:
             
             # Parse wattage
             wattage_str = product_info.get('Maximum Power', '')
-            wattage = UnitConverter.parse_power_string(wattage_str)
+            wattage = UnitConverter.parse_power_string(wattage_str, context=f"ASIN {asin}")
             if not wattage:
                 logger.error(f"Failed to parse wattage: {wattage_str}")
                 return None
@@ -340,9 +344,6 @@ class ScraperAPIParser:
             # Typical panel voltages are 12V, 24V, 36V, 48V
             # System voltages can be 600V, 1000V, 1500V
             # We'll store them but they should be interpreted carefully
-            
-            # Get ASIN early for error logging
-            asin = api_response.get('asin') or product_info.get('ASIN')
             
             # Parse price
             price_str = api_response.get('pricing', '')
