@@ -184,6 +184,35 @@ class ASINManager:
                 logger.error(f"Failed to mark ASIN as processing: {e2}")
                 return False
     
+    async def mark_batch_processing(self, asin_list: list[str]) -> bool:
+        """
+        Mark multiple ASINs as processing in a single batch operation.
+        This prevents race conditions when multiple ingest processes run simultaneously.
+        
+        Args:
+            asin_list: List of ASINs to mark as processing
+            
+        Returns:
+            True if successfully updated
+        """
+        try:
+            if not asin_list:
+                return True
+                
+            # Update all ASINs in the list to processing status
+            # Use a single SQL update with IN clause for efficiency
+            result = self.client.table('asin_staging').update({
+                'status': 'processing',
+                'last_attempt_at': 'now()'
+            }).in_('asin', asin_list).execute()
+            
+            logger.info(f"Marked {len(asin_list)} ASINs as processing in batch")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to mark batch as processing: {e}")
+            return False
+    
     async def mark_asin_completed(self, asin: str, panel_id: str) -> bool:
         """
         Mark ASIN as successfully ingested.

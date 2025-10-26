@@ -123,9 +123,6 @@ async def ingest_single_asin(
             await asin_manager.mark_asin_failed(asin, "Already exists in database", is_permanent=True)
             return False
         
-        # Mark as processing
-        await asin_manager.mark_asin_processing(asin)
-        
         # Fetch product data with retry logic
         logger.log_script_event("INFO", f"Fetching product details for ASIN: {asin}")
         
@@ -486,6 +483,13 @@ async def main():
             return 0
         
         print(f"\nProcessing {len(pending_asins)} ASIN(s)...")
+        
+        # Mark all ASINs in batch as processing immediately to prevent race conditions
+        asin_list = [asin_info['asin'] for asin_info in pending_asins]
+        logger.log_script_event("INFO", f"Marking {len(asin_list)} ASINs as processing to prevent race conditions")
+        
+        # Mark all ASINs as processing in a single batch operation
+        await asin_manager.mark_batch_processing(asin_list)
         
         # Track results
         results = {
