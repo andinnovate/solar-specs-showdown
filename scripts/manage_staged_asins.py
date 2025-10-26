@@ -254,6 +254,191 @@ def print_asins_table(asins: List[Dict[str, Any]], title: str = "ASINs"):
         print(f"{asin:<12} {source:<10} {keyword:<25} {status:<12} {priority:<8} {created_at:<20}")
 
 
+def print_section(title: str, data: Dict[str, Any] = None):
+    """Print a formatted section"""
+    print(f"\n{'='*60}")
+    print(f"{title}")
+    print(f"{'='*60}")
+    
+    if data:
+        for key, value in data.items():
+            if value is None or value == '':
+                value = 'N/A'
+            print(f"{key:<20}: {value}")
+
+
+async def inspect_asin(asin: str) -> Dict[str, Any]:
+    """
+    Inspect an ASIN across all database tables
+    
+    Returns:
+        Dictionary with inspection results
+    """
+    results = {
+        'asin': asin,
+        'staging_status': None,
+        'panel_status': None,
+        'raw_data_status': None,
+        'staging_details': {},
+        'panel_details': {},
+        'raw_data_details': {}
+    }
+    
+    # Initialize database connections
+    client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+    db = SolarPanelDB()
+    
+    # 1. Check staging table
+    try:
+        staging_result = client.table('asin_staging').select('*').eq('asin', asin).execute()
+        if staging_result.data:
+            staging_info = staging_result.data[0]
+            results['staging_status'] = 'exists'
+            results['staging_details'] = {
+                'Status': staging_info.get('status', 'unknown'),
+                'Source': staging_info.get('source', 'unknown'),
+                'Keyword': staging_info.get('source_keyword', 'N/A'),
+                'Priority': staging_info.get('priority', 0),
+                'Attempts': f"{staging_info.get('attempts', 0)}/{staging_info.get('max_attempts', 3)}",
+                'Created': format_timestamp(staging_info.get('created_at')),
+                'Last Attempt': format_timestamp(staging_info.get('last_attempt_at')),
+                'Error Message': staging_info.get('error_message', 'None'),
+                'Panel ID': staging_info.get('panel_id', 'None')
+            }
+        else:
+            results['staging_status'] = 'not_found'
+    except Exception as e:
+        results['staging_status'] = 'error'
+        results['staging_details'] = {'Error': str(e)}
+    
+    # 2. Check panels table
+    try:
+        panel = await db.get_panel_by_asin(asin)
+        if panel:
+            results['panel_status'] = 'exists'
+            results['panel_details'] = {
+                'Panel ID': panel.get('id', 'N/A'),
+                'Name': panel.get('name', 'N/A')[:50] + '...' if len(panel.get('name', '')) > 50 else panel.get('name', 'N/A'),
+                'Wattage': f"{panel.get('wattage', 'N/A')}W",
+                'Voltage': f"{panel.get('voltage', 'N/A')}V",
+                'Dimensions': f"{panel.get('length_cm', 'N/A')}x{panel.get('width_cm', 'N/A')}x{panel.get('height_cm', 'N/A')} cm",
+                'Weight': f"{panel.get('weight_kg', 'N/A')} kg",
+                'Price': f"${panel.get('price_usd', 'N/A')}",
+                'Created': format_timestamp(panel.get('created_at')),
+                'Updated': format_timestamp(panel.get('updated_at'))
+            }
+        else:
+            results['panel_status'] = 'not_found'
+    except Exception as e:
+        results['panel_status'] = 'error'
+        results['panel_details'] = {'Error': str(e)}
+    
+    # 3. Check raw scraper data table
+    try:
+        raw_data_result = client.table('raw_scraper_data').select('*').eq('asin', asin).execute()
+        if raw_data_result.data:
+            raw_data_info = raw_data_result.data[0]
+            results['raw_data_status'] = 'exists'
+            results['raw_data_details'] = {
+                'Panel ID': raw_data_info.get('panel_id', 'NULL'),
+                'Scraper Version': raw_data_info.get('scraper_version', 'N/A'),
+                'Response Size': f"{raw_data_info.get('response_size_bytes', 0)} bytes",
+                'Created': format_timestamp(raw_data_info.get('created_at')),
+                'Parsing Failed': raw_data_info.get('processing_metadata', {}).get('parsing_failed', False),
+                'Failure Reason': raw_data_info.get('processing_metadata', {}).get('failure_reason', 'N/A'),
+                'Filtered': raw_data_info.get('processing_metadata', {}).get('filtered', False),
+                'Filter Reason': raw_data_info.get('processing_metadata', {}).get('filter_reason', 'N/A')
+            }
+        else:
+            results['raw_data_status'] = 'not_found'
+    except Exception as e:
+        results['raw_data_status'] = 'error'
+        results['raw_data_details'] = {'Error': str(e)}
+    
+    return results
+
+
+def print_inspection_summary(results: Dict[str, Any]):
+    """Print a summary of the ASIN status"""
+    asin = results['asin']
+    
+    print(f"\n{'='*80}")
+    print(f"ASIN INSPECTION SUMMARY: {asin}")
+    print(f"{'='*80}")
+    
+    # Summary table
+    print(f"{'Location':<20} {'Status':<15} {'Details':<30}")
+    print(f"{'-'*65}")
+    
+    staging_status = results['staging_status']
+    if staging_status == 'exists':
+        status = results['staging_details'].get('Status', 'unknown')
+        details = f"Source: {results['staging_details'].get('Source', 'N/A')}"
+    elif staging_status == 'not_found':
+        status = 'Not Found'
+        details = 'Not in staging table'
+    else:
+        status = 'Error'
+        details = 'Database error'
+    
+    print(f"{'Staging Table':<20} {status:<15} {details:<30}")
+    
+    panel_status = results['panel_status']
+    if panel_status == 'exists':
+        status = 'Exists'
+        details = f"Name: {results['panel_details'].get('Name', 'N/A')[:20]}..."
+    elif panel_status == 'not_found':
+        status = 'Not Found'
+        details = 'Not in panels table'
+    else:
+        status = 'Error'
+        details = 'Database error'
+    
+    print(f"{'Panels Table':<20} {status:<15} {details:<30}")
+    
+    raw_status = results['raw_data_status']
+    if raw_status == 'exists':
+        status = 'Exists'
+        panel_id = results['raw_data_details'].get('Panel ID', 'NULL')
+        details = f"Panel ID: {panel_id}"
+    elif raw_status == 'not_found':
+        status = 'Not Found'
+        details = 'No raw data saved'
+    else:
+        status = 'Error'
+        details = 'Database error'
+    
+    print(f"{'Raw Data Table':<20} {status:<15} {details:<30}")
+    
+    # Determine overall status
+    staging_exists = results['staging_status'] == 'exists'
+    panel_exists = results['panel_status'] == 'exists'
+    raw_exists = results['raw_data_status'] == 'exists'
+    
+    print(f"\n{'='*80}")
+    print("OVERALL STATUS:")
+    
+    if panel_exists:
+        print("✓ ASIN is successfully processed and in the panels database")
+    elif staging_exists:
+        staging_status = results['staging_details'].get('Status', 'unknown')
+        if staging_status == 'failed':
+            print("✗ ASIN failed processing and is marked as failed in staging")
+        elif staging_status == 'pending':
+            print("⏳ ASIN is pending processing in staging queue")
+        elif staging_status == 'processing':
+            print("🔄 ASIN is currently being processed")
+        else:
+            print(f"? ASIN has unknown status: {staging_status}")
+    else:
+        print("? ASIN not found in staging or panels database")
+    
+    if raw_exists:
+        print("✓ Raw scraper data is available for analysis")
+    else:
+        print("⚠ Raw scraper data not found")
+
+
 async def main():
     parser = argparse.ArgumentParser(
         description='Manage staged ASINs in the database',
@@ -261,6 +446,9 @@ async def main():
 Examples:
   # Show statistics
   python manage_staged_asins.py --stats
+  
+  # Inspect a specific ASIN
+  python manage_staged_asins.py --inspect B0CPLQGGD7
   
   # Remove ASINs from "solar panel test" searches (dry run)
   python manage_staged_asins.py --remove-by-search "solar panel test" --dry-run
@@ -290,6 +478,11 @@ Examples:
         type=int,
         default=20,
         help='Limit for --list command (default: 20)'
+    )
+    parser.add_argument(
+        '--inspect',
+        type=str,
+        help='Inspect a specific ASIN across all database tables'
     )
     
     # Filter arguments for viewing
@@ -357,6 +550,27 @@ Examples:
     )
     
     args = parser.parse_args()
+    
+    # Handle inspection command
+    if args.inspect:
+        try:
+            results = await inspect_asin(args.inspect)
+            print_inspection_summary(results)
+            
+            # Show detailed information
+            if results['staging_status'] == 'exists':
+                print_section("STAGING TABLE DETAILS", results['staging_details'])
+            
+            if results['panel_status'] == 'exists':
+                print_section("PANELS TABLE DETAILS", results['panel_details'])
+            
+            if results['raw_data_status'] == 'exists':
+                print_section("RAW DATA TABLE DETAILS", results['raw_data_details'])
+            
+            return 0
+        except Exception as e:
+            print(f"Error inspecting ASIN {args.inspect}: {str(e)}")
+            return 1
     
     # Validate arguments
     removal_args = [args.remove_by_source, args.remove_by_status, args.remove_by_search, args.remove_by_keyword]
