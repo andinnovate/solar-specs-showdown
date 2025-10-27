@@ -382,6 +382,11 @@ class ScraperAPIParser:
             description = api_response.get('full_description', '')[:1000] if api_response.get('full_description') else None
             image_url = api_response.get('images', [None])[0]
             
+            # Sanitize ASIN to remove any invisible characters (zero-width spaces, etc.)
+            if asin:
+                import re
+                asin = re.sub(r'[\u200B-\u200D\uFEFF\u200E\u200F]', '', asin).strip()
+            
             # Construct Amazon URL from ASIN
             web_url = f"https://www.amazon.com/dp/{asin}" if asin else None
             

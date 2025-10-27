@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
@@ -39,6 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { cmToInches, inchesToCm, kgToLbs, lbsToKg } from "@/lib/unitConversions";
 
 interface FlagData {
   id: string;
@@ -97,6 +99,14 @@ export const FlagQueue = () => {
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; flag: FlagData | null }>({
     isOpen: false,
     flag: null
+  });
+  const [editedCorrections, setEditedCorrections] = useState<Record<string, any>>({});
+  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('solar-panel-unit-system');
+      return (saved as 'metric' | 'imperial') || 'metric';
+    }
+    return 'metric';
   });
 
   useEffect(() => {
@@ -162,6 +172,38 @@ export const FlagQueue = () => {
       toast.error('Failed to load flags');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const applyEditedCorrections = async (panelId: string, corrections: Record<string, any>) => {
+    try {
+      // Convert values back to metric for storage
+      const convertedCorrections: Record<string, any> = {};
+      
+      for (const [field, value] of Object.entries(corrections)) {
+        if (typeof value === 'number') {
+          convertedCorrections[field] = convertValueForStorage(field, value.toString());
+        } else {
+          convertedCorrections[field] = value;
+        }
+      }
+
+      // Apply the edited corrections to the solar_panels table
+      const { error } = await supabase
+        .from('solar_panels')
+        .update(convertedCorrections)
+        .eq('id', panelId);
+
+      if (error) {
+        console.error('Error applying corrections:', error);
+        toast.error('Failed to apply corrections to panel');
+        throw error;
+      }
+
+      toast.success('Corrections applied to panel');
+    } catch (error) {
+      console.error('Error applying corrections:', error);
+      toast.error('Failed to apply corrections');
     }
   };
 
@@ -352,6 +394,63 @@ export const FlagQueue = () => {
     }
     
     return null;
+  };
+
+  const formatValueForDisplay = (field: string, value: any): string => {
+    if (value === null || value === undefined) return '';
+    
+    switch (field) {
+      case 'length_cm':
+      case 'width_cm':
+        if (unitSystem === 'imperial') {
+          return `in (${cmToInches(parseFloat(value))} in)`;
+        }
+        return `cm (${value})`;
+      
+      case 'weight_kg':
+        if (unitSystem === 'imperial') {
+          return `lbs (${kgToLbs(parseFloat(value))} lbs)`;
+        }
+        return `kg (${value})`;
+      
+      default:
+        return String(value);
+    }
+  };
+
+  const convertValueForDisplay = (field: string, value: any): number => {
+    if (value === null || value === undefined) return 0;
+    const numValue = parseFloat(value);
+    
+    switch (field) {
+      case 'length_cm':
+      case 'width_cm':
+        return unitSystem === 'imperial' ? cmToInches(numValue) : numValue;
+      
+      case 'weight_kg':
+        return unitSystem === 'imperial' ? kgToLbs(numValue) : numValue;
+      
+      default:
+        return numValue;
+    }
+  };
+
+  const convertValueForStorage = (field: string, value: string): number => {
+    const numValue = parseFloat(value);
+    
+    if (isNaN(numValue)) return 0;
+    
+    switch (field) {
+      case 'length_cm':
+      case 'width_cm':
+        return unitSystem === 'imperial' ? inchesToCm(numValue) : numValue;
+      
+      case 'weight_kg':
+        return unitSystem === 'imperial' ? lbsToKg(numValue) : numValue;
+      
+      default:
+        return numValue;
+    }
   };
 
   if (loading) {
@@ -569,24 +668,104 @@ export const FlagQueue = () => {
                 </div>
               </div>
 
+              {/* System flags with missing data - show editable fields */}
+              {selectedFlag.flag_type?.startsWith('system_') && selectedFlag.flagged_fields.length > 0 && (
+                <div>
+                  <Label className="text-sm font-medium">Missing Data - Add Values:</Label>
+                  <div className="mt-1 space-y-3">
+                    {selectedFlag.flagged_fields.map((field) => {
+                      const currentValue = getCurrentValue(selectedFlag, field);
+                      const suggestedValue = selectedFlag.suggested_corrections?.[field];
+                      
+                      // Convert value for display
+                      const displayValue = convertValueForDisplay(field, suggestedValue || currentValue || 0);
+                      const editedValue = editedCorrections[field] !== undefined ? editedCorrections[field] : displayValue;
+                      
+                      // Get the unit for this field
+                      const unit = field === 'length_cm' || field === 'width_cm' 
+                        ? (unitSystem === 'imperial' ? 'in' : 'cm')
+                        : field === 'weight_kg'
+                        ? (unitSystem === 'imperial' ? 'lbs' : 'kg')
+                        : '';
+                      
+                      return (
+                        <div key={field} className="space-y-1">
+                          <div className="text-sm font-medium flex items-center gap-2">
+                            {fieldLabels[field] || field}
+                            {unit && <span className="text-xs text-muted-foreground">({unit})</span>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={editedValue}
+                              onChange={(e) => {
+                                setEditedCorrections({
+                                  ...editedCorrections,
+                                  [field]: parseFloat(e.target.value) || 0
+                                });
+                              }}
+                              className="mt-1 flex-1"
+                              placeholder={`Enter ${fieldLabels[field] || field}`}
+                            />
+                            {unit && <span className="text-xs text-muted-foreground mt-1">{unit}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* User flag corrections */}
               {Object.keys(selectedFlag.suggested_corrections).length > 0 && (
                 <div>
-                  <Label className="text-sm font-medium">Suggested Corrections:</Label>
-                  <div className="mt-1 space-y-2">
+                  <Label className="text-sm font-medium">Edit Corrections:</Label>
+                  <div className="mt-1 space-y-3">
                     {Object.entries(selectedFlag.suggested_corrections).map(([field, value]) => {
                       const currentValue = getCurrentValue(selectedFlag, field);
+                      
+                      // Convert the suggested value for display
+                      const displayValue = convertValueForDisplay(field, value);
+                      const editedValue = editedCorrections[field] !== undefined ? editedCorrections[field] : displayValue;
+                      
+                      // Get the unit for this field
+                      const unit = field === 'length_cm' || field === 'width_cm' 
+                        ? (unitSystem === 'imperial' ? 'in' : 'cm')
+                        : field === 'weight_kg'
+                        ? (unitSystem === 'imperial' ? 'lbs' : 'kg')
+                        : '';
+                      
+                      // Display current value with unit conversion
+                      const displayCurrentValue = currentValue 
+                        ? convertValueForDisplay(field, currentValue)
+                        : null;
+                      
                       return (
-                        <div key={field} className="text-sm space-y-1">
-                          <div className="font-medium">{fieldLabels[field] || field}:</div>
+                        <div key={field} className="space-y-1">
+                          <div className="text-sm font-medium flex items-center gap-2">
+                            {fieldLabels[field] || field}
+                            {unit && <span className="text-xs text-muted-foreground">({unit})</span>}
+                          </div>
+                          {displayCurrentValue !== null && (
+                            <div className="text-xs text-muted-foreground line-through">
+                              Current: {String(displayCurrentValue)}{unit ? ` ${unit}` : ''}
+                            </div>
+                          )}
                           <div className="flex items-center gap-2">
-                            {currentValue && (
-                              <span className="text-muted-foreground line-through text-xs">
-                                Current: {String(currentValue)}
-                              </span>
-                            )}
-                            <span className="text-green-600 font-medium">
-                              → {String(value)}
-                            </span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={editedValue}
+                              onChange={(e) => {
+                                setEditedCorrections({
+                                  ...editedCorrections,
+                                  [field]: parseFloat(e.target.value) || 0
+                                });
+                              }}
+                              className="mt-1 flex-1"
+                            />
+                            {unit && <span className="text-xs text-muted-foreground mt-1">{unit}</span>}
                           </div>
                         </div>
                       );
@@ -635,14 +814,28 @@ export const FlagQueue = () => {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => selectedFlag && handleFlagAction(selectedFlag.id, 'reject', adminNote)}
+              onClick={() => {
+                if (selectedFlag) {
+                  setEditedCorrections({});
+                  handleFlagAction(selectedFlag.id, 'reject', adminNote);
+                }
+              }}
               disabled={actionLoading}
             >
               <X className="w-4 h-4 mr-1" />
               Reject
             </Button>
             <Button
-              onClick={() => selectedFlag && handleFlagAction(selectedFlag.id, 'approve', adminNote)}
+              onClick={async () => {
+                if (selectedFlag) {
+                  // If there are edited corrections, update the panel with them
+                  if (Object.keys(editedCorrections).length > 0) {
+                    await applyEditedCorrections(selectedFlag.panel_id, editedCorrections);
+                  }
+                  setEditedCorrections({});
+                  handleFlagAction(selectedFlag.id, 'approve', adminNote);
+                }
+              }}
               disabled={actionLoading}
             >
               <Check className="w-4 h-4 mr-1" />
