@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star, AlertCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/unitConversions";
+import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, formatWattageWithPieces } from "@/lib/unitConversions";
 import { FlagIcon } from "@/components/FlagIcon";
 import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
 import { useState, useEffect } from "react";
@@ -22,6 +22,7 @@ interface SolarPanel {
   description: string | null;
   image_url: string | null;
   web_url: string | null;
+  piece_count: number;       // Number of pieces in the set
   missing_fields?: string[];  // NEW
   flag_count?: number;
   user_verified_overrides?: string[];
@@ -74,7 +75,9 @@ export const SolarPanelCard = ({
     return fields.map(f => fieldMap[f] || f).join(', ');
   };
   
-  const pricePerWatt = panel.wattage && panel.price_usd ? (panel.price_usd / panel.wattage).toFixed(2) : null;
+  // Calculate price per watt using total wattage (wattage × piece_count)
+  const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
+  const pricePerWatt = totalWattage && panel.price_usd ? (panel.price_usd / totalWattage).toFixed(2) : null;
   const wattsPerKg = panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null;
   const areaM2 = panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null;
   const wattsPerSqM = panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null;
@@ -176,7 +179,14 @@ export const SolarPanelCard = ({
                 }
               })()}
             </div>
-            <CardDescription>{panel.manufacturer}</CardDescription>
+            <CardDescription>
+              {panel.manufacturer}
+              {(panel.piece_count || 1) > 1 && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({panel.piece_count} pieces)
+                </span>
+              )}
+            </CardDescription>
             {hasMissingData(panel) && (
               <Badge variant="outline" className="mt-2 text-xs">
                 <AlertCircle className="w-3 h-3 mr-1" />
@@ -186,7 +196,7 @@ export const SolarPanelCard = ({
           </div>
           {panel.wattage ? (
             <Badge variant="secondary" className="text-lg font-bold">
-              {panel.wattage}W
+              {formatWattageWithPieces(panel.wattage, panel.piece_count || 1, unitSystem)}
             </Badge>
           ) : (
             <Badge variant="outline" className="text-sm">
@@ -231,7 +241,7 @@ export const SolarPanelCard = ({
             <Weight className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Weight:</span>
             {panel.weight_kg ? (
-              <span className="font-medium">{formatWeight(panel.weight_kg, unitSystem)}</span>
+              <span className="font-medium">{formatWeightWithPieces(panel.weight_kg, panel.piece_count || 1, unitSystem)}</span>
             ) : (
               <span className="text-sm text-muted-foreground">
                 Not available

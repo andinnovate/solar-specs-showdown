@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X, ExternalLink } from "lucide-react";
-import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/unitConversions";
+import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, formatWattageWithPieces } from "@/lib/unitConversions";
 
 interface SolarPanel {
   id: string;
@@ -16,6 +16,7 @@ interface SolarPanel {
   wattage: number | null;    // Now nullable
   voltage: number | null;
   price_usd: number | null;  // Now nullable
+  piece_count: number;       // Number of pieces in the set
   web_url?: string | null;
   missing_fields?: string[];  // NEW
 }
@@ -46,12 +47,16 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
     );
   }
 
-  const calculateMetrics = (panel: SolarPanel) => ({
-    pricePerWatt: panel.wattage && panel.price_usd ? (panel.price_usd / panel.wattage).toFixed(2) : null,
-    wattsPerKg: panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null,
-    areaM2: panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null,
-    wattsPerSqM: panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null,
-  });
+  const calculateMetrics = (panel: SolarPanel) => {
+    // Price per watt uses total wattage (wattage × piece_count)
+    const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
+    return {
+      pricePerWatt: totalWattage && panel.price_usd ? (panel.price_usd / totalWattage).toFixed(2) : null,
+      wattsPerKg: panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null,
+      areaM2: panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null,
+      wattsPerSqM: panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null,
+    };
+  };
 
   return (
     <Card className="overflow-hidden">
@@ -135,7 +140,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                 >
                   {panel.wattage ? (
                     <Badge variant="secondary" className="text-base">
-                      {panel.wattage}W
+                      {formatWattageWithPieces(panel.wattage, panel.piece_count || 1, unitSystem)}
                     </Badge>
                   ) : (
                     <span className="text-muted-foreground">N/A</span>
@@ -226,7 +231,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  {panel.weight_kg ? formatWeight(panel.weight_kg, unitSystem) : <span className="text-muted-foreground">N/A</span>}
+                  {panel.weight_kg ? formatWeightWithPieces(panel.weight_kg, panel.piece_count || 1, unitSystem) : <span className="text-muted-foreground">N/A</span>}
                 </TableCell>
               ))}
             </TableRow>

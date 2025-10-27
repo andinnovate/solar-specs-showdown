@@ -97,6 +97,7 @@ export const DEFAULT_FIELD_MAPPINGS: FieldMapping[] = [
   { csvHeader: 'wattage', dbField: 'wattage', required: true },
   { csvHeader: 'voltage', dbField: 'voltage', required: false },
   { csvHeader: 'price_usd', dbField: 'price_usd', unit: 'usd', required: true },
+  { csvHeader: 'piece_count', dbField: 'piece_count', required: false },
   { csvHeader: 'description', dbField: 'description', required: false },
   { csvHeader: 'image_url', dbField: 'image_url', required: false },
   { csvHeader: 'web_url', dbField: 'web_url', required: false },
@@ -226,7 +227,10 @@ export function processCSVRow(
   csvRow: CSVRow, 
   fieldMappings: FieldMapping[]
 ): Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> {
-  const processed: Record<string, unknown> = {};
+  const processed = {} as Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'>;
+  
+  // Default piece_count to 1 if not provided
+  processed.piece_count = 1;
 
   for (const mapping of fieldMappings) {
     const csvValue = csvRow[mapping.csvHeader];
@@ -235,6 +239,7 @@ export function processCSVRow(
       if (mapping.required) {
         throw new Error(`Required field "${mapping.csvHeader}" is missing or empty`);
       }
+      // For piece_count, if not provided, already defaulted to 1 above
       continue;
     }
 
@@ -253,14 +258,20 @@ export function processCSVRow(
       // Use selected unit if available, otherwise detect from value
       const unitToUse = mapping.selectedUnit || detectUnit(csvValue, 'price');
       processedValue = convertValue(csvValue, unitToUse, 'price');
-    } else if (['wattage', 'voltage'].includes(mapping.dbField)) {
-      processedValue = parseFloat(processedValue);
-      if (isNaN(processedValue)) {
+    } else if (['wattage', 'voltage', 'piece_count'].includes(mapping.dbField)) {
+      const csvValueStr = String(csvValue).trim();
+      const numValue = parseFloat(csvValueStr);
+      if (isNaN(numValue)) {
         throw new Error(`Invalid numeric value for ${mapping.dbField}: ${csvValue}`);
       }
+      // Validate piece_count is a positive integer
+      if (mapping.dbField === 'piece_count' && (numValue < 1 || !Number.isInteger(numValue))) {
+        throw new Error(`piece_count must be a positive integer, got: ${csvValue}`);
+      }
+      processedValue = numValue;
     }
 
-    processed[mapping.dbField] = processedValue;
+    (processed as any)[mapping.dbField] = processedValue;
   }
 
   return processed;
@@ -298,7 +309,7 @@ export function calculateChanges(
   // Only compare valid database columns, ignore unmapped CSV fields
   const validColumns = [
     'name', 'manufacturer', 'length_cm', 'width_cm', 'weight_kg', 
-    'wattage', 'voltage', 'price_usd', 'description', 'image_url', 'web_url'
+    'wattage', 'voltage', 'price_usd', 'description', 'image_url', 'web_url', 'piece_count'
   ];
 
   validColumns.forEach(key => {

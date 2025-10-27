@@ -25,6 +25,7 @@ export type Database = {
           manufacturer: string
           missing_fields: Json | null
           name: string
+          piece_count: number
           price_usd: number | null
           updated_at: string
           voltage: number | null
@@ -43,6 +44,7 @@ export type Database = {
           manufacturer: string
           missing_fields?: Json | null
           name: string
+          piece_count?: number
           price_usd?: number | null
           updated_at?: string
           voltage?: number | null
@@ -61,6 +63,7 @@ export type Database = {
           manufacturer?: string
           missing_fields?: Json | null
           name?: string
+          piece_count?: number
           price_usd?: number | null
           updated_at?: string
           voltage?: number | null
@@ -295,6 +298,7 @@ export interface SolarPanel {
   description: string | null;
   image_url: string | null;
   web_url: string | null;
+  piece_count: number;       // Number of pieces in the set
   missing_fields?: string[];  // NEW
   flag_count?: number;
   user_verified_overrides?: string[];

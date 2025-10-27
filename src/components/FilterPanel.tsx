@@ -20,6 +20,7 @@ interface SolarPanel {
   wattage: number | null;    // Now nullable
   voltage: number | null;
   price_usd: number | null;  // Now nullable
+  piece_count?: number;       // Number of pieces in the set
   description?: string;
   image_url?: string;
   web_url?: string | null;
@@ -67,8 +68,12 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSys
   const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   // Calculate derived data arrays for histograms (filter out null values)
+  // Note: For price per watt, use total wattage (wattage × piece_count)
   const priceData = panels.filter(p => p.price_usd !== null).map(p => p.price_usd!);
-  const pricePerWattData = panels.filter(p => p.price_usd !== null && p.wattage !== null).map(p => p.price_usd! / p.wattage!);
+  const pricePerWattData = panels.filter(p => p.price_usd !== null && p.wattage !== null).map(p => {
+    const totalWattage = p.wattage! * (p.piece_count || 1);
+    return p.price_usd! / totalWattage;
+  });
   const lengthData = panels.filter(p => p.length_cm !== null).map(p => unitSystem === 'imperial' ? cmToInches(p.length_cm!) : p.length_cm!);
   const widthData = panels.filter(p => p.width_cm !== null).map(p => unitSystem === 'imperial' ? cmToInches(p.width_cm!) : p.width_cm!);
   const wattageData = panels.filter(p => p.wattage !== null).map(p => p.wattage!);

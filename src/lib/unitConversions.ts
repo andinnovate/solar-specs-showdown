@@ -116,3 +116,32 @@ export const formatArea = (lengthCm: number, widthCm: number, unitSystem: UnitSy
   const display = convertArea(lengthCm, widthCm, unitSystem);
   return `${display.value}${display.unit}`;
 };
+
+// Format weight with piece count information
+// Shows "X lbs (Y lbs/ea)" for multi-piece sets or "X lbs" for single pieces
+export const formatWeightWithPieces = (kg: number, pieceCount: number, unitSystem: UnitSystem): string => {
+  const perPieceWeight = formatWeight(kg, unitSystem);
+  
+  if (pieceCount > 1) {
+    const totalWeight = kg * pieceCount;
+    const totalWeightDisplay = convertWeight(totalWeight, unitSystem);
+    return `${totalWeightDisplay.value}${totalWeightDisplay.unit} (${perPieceWeight}/ea)`;
+  }
+  
+  return perPieceWeight;
+};
+
+// Format wattage with piece count information
+// Shows "X W (Y W/ea × Z pcs)" for multi-piece sets or "X W" for single pieces
+export const formatWattageWithPieces = (wattage: number | null, pieceCount: number, unitSystem: UnitSystem): string => {
+  if (wattage === null) {
+    return 'N/A';
+  }
+  
+  if (pieceCount > 1) {
+    const totalWattage = wattage * pieceCount;
+    return `${totalWattage}W (${wattage}W/ea × ${pieceCount} pcs)`;
+  }
+  
+  return `${wattage}W`;
+};

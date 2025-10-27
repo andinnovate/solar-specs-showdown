@@ -98,7 +98,7 @@ export const DatabaseManager = () => {
       const changedFields: string[] = [];
       const editableFields = [
         'name', 'manufacturer', 'price_usd', 'wattage', 'voltage',
-        'length_cm', 'width_cm', 'weight_kg', 'web_url', 'image_url', 'description', 'asin'
+        'length_cm', 'width_cm', 'weight_kg', 'web_url', 'image_url', 'description', 'asin', 'piece_count'
       ];
 
       editableFields.forEach(field => {
@@ -390,7 +390,7 @@ export const DatabaseManager = () => {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <Label className="flex items-center gap-2">
                             Wattage
@@ -441,6 +441,31 @@ export const DatabaseManager = () => {
                             <p className="text-sm">
                               {panel.voltage ? `${panel.voltage} V` : "Not set"}
                             </p>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="flex items-center gap-2">
+                            Piece Count
+                            {hasManualOverride('piece_count') && (
+                              <span title="Manually edited - protected from scraper updates">
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </span>
+                            )}
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              type="number"
+                              min="1"
+                              value={currentPanel.piece_count || 1}
+                              onChange={(e) =>
+                                setEditedPanel({
+                                  ...editedPanel,
+                                  piece_count: parseInt(e.target.value),
+                                })
+                              }
+                            />
+                          ) : (
+                            <p className="text-sm">{panel.piece_count || 1} {panel.piece_count === 1 ? 'piece' : 'pieces'}</p>
                           )}
                         </div>
                       </div>

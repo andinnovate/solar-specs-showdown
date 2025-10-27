@@ -29,6 +29,7 @@ interface SolarPanel {
   description: string | null;
   image_url: string | null;
   web_url: string | null;
+  piece_count: number;       // Number of pieces in the set
   missing_fields?: string[];  // NEW
   flag_count?: number;
   user_verified_overrides?: string[];
@@ -174,7 +175,13 @@ const Index = () => {
         .order('wattage', { ascending: false });
 
       if (error) throw error;
-      setPanels(data || []);
+      // Transform data to match SolarPanel interface, including piece_count default
+      const transformedData = (data || []).map(panel => ({
+        ...panel,
+        piece_count: panel.piece_count ?? 1,
+        missing_fields: panel.missing_fields as string[] | undefined
+      }));
+      setPanels(transformedData);
       
       // Set initial filter bounds based on data
       if (data && data.length > 0) {
@@ -232,7 +239,10 @@ const Index = () => {
     const validWeights = panels.filter(p => p.weight_kg !== null).map(p => p.weight_kg!);
     const validLengths = panels.filter(p => p.length_cm !== null).map(p => p.length_cm!);
     const validWidths = panels.filter(p => p.width_cm !== null).map(p => p.width_cm!);
-    const pricePerWatts = panels.filter(p => p.price_usd !== null && p.wattage !== null).map(p => p.price_usd! / p.wattage!);
+    const pricePerWatts = panels.filter(p => p.price_usd !== null && p.wattage !== null).map(p => {
+      const totalWattage = p.wattage! * (p.piece_count || 1);
+      return p.price_usd! / totalWattage;
+    });
     const wattsPerKgs = panels.filter(p => p.wattage !== null && p.weight_kg !== null).map(p => p.wattage! / p.weight_kg!);
     const wattsPerSqMs = panels.filter(p => p.wattage !== null && p.length_cm !== null && p.width_cm !== null).map(p => p.wattage! / ((p.length_cm! * p.width_cm!) / 10000));
     
@@ -294,7 +304,9 @@ const Index = () => {
       }
 
       // Calculate metrics only if values exist
-      const pricePerWatt = panel.price_usd && panel.wattage ? panel.price_usd / panel.wattage : null;
+      // Price per watt uses total wattage (wattage × piece_count)
+      const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
+      const pricePerWatt = panel.price_usd && totalWattage ? panel.price_usd / totalWattage : null;
       const wattsPerKg = panel.wattage && panel.weight_kg ? panel.wattage / panel.weight_kg : null;
       const wattsPerSqM = panel.wattage && panel.length_cm && panel.width_cm ? panel.wattage / ((panel.length_cm * panel.width_cm) / 10000) : null;
       
