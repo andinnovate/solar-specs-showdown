@@ -14,6 +14,7 @@ import {
   DialogTitle, 
   DialogFooter 
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Flag, 
   Check, 
@@ -24,14 +25,26 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 interface FlagData {
   id: string;
   panel_id: string;
-  user_id: string;
+  user_id: string | null;  // System flags have null user_id
+  flag_type: string;  // NEW: 'user', 'system_missing_data', 'system_parse_failure'
   flagged_fields: string[];
   suggested_corrections: Record<string, any>;
   user_comment: string;
@@ -43,9 +56,9 @@ interface FlagData {
   resolved_by: string;
   panel_name: string;
   manufacturer: string;
-  wattage: number;
-  price_usd: number;
-  user_email: string;
+  wattage: number | null;  // Now nullable
+  price_usd: number | null;  // Now nullable
+  user_email: string | null;  // System flags have null user_email
   resolved_by_email: string;
   // Current panel values for comparison
   current_name?: string;
@@ -80,17 +93,22 @@ export const FlagQueue = () => {
   const [selectedFlag, setSelectedFlag] = useState<FlagData | null>(null);
   const [adminNote, setAdminNote] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [flagFilter, setFlagFilter] = useState<'all' | 'user' | 'system'>('all');
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; flag: FlagData | null }>({
+    isOpen: false,
+    flag: null
+  });
 
   useEffect(() => {
     loadFlags();
-  }, []);
+  }, [flagFilter]);
 
   const loadFlags = async () => {
     try {
       setLoading(true);
       
       // Query the admin_flag_queue view to get pending flags with current panel data
-      const { data, error } = await supabase
+      let query = supabase
         .from('admin_flag_queue' as any)
         .select(`
           *,
@@ -106,8 +124,18 @@ export const FlagQueue = () => {
             description,
             web_url
           )
-        `)
-        .order('created_at', { ascending: false });
+        `);
+      
+      // Apply filter based on flag type
+      if (flagFilter !== 'all') {
+        if (flagFilter === 'system') {
+          query = query.like('flag_type', 'system_%');
+        } else if (flagFilter === 'user') {
+          query = query.eq('flag_type', 'user');
+        }
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
         throw new Error(`Failed to load flags: ${error.message}`);
@@ -172,6 +200,97 @@ export const FlagQueue = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleDeleteClick = (flag: FlagData) => {
+    setDeleteDialog({ isOpen: true, flag });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.flag) return;
+
+    const flag = deleteDialog.flag;
+    setActionLoading(true);
+
+    try {
+      // Delete the flag
+      const { error } = await supabase
+        .from('user_flags' as any)
+        .delete()
+        .eq('id', flag.id);
+
+      if (error) {
+        throw new Error(`Failed to delete flag: ${error.message}`);
+      }
+
+      // Also delete the associated panel if it exists
+      if (flag.panel_id) {
+        const { error: panelError } = await supabase
+          .from('solar_panels')
+          .delete()
+          .eq('id', flag.panel_id);
+
+        if (panelError) {
+          console.error('Error deleting panel:', panelError);
+          // Don't throw - flag deletion was successful
+        }
+      }
+
+      // Also delete associated raw_scraper_data entries
+      // Extract ASIN from web_url
+      if (flag.web_url) {
+        const asinMatch = flag.web_url.match(/\/dp\/([A-Z0-9]{10})/);
+        if (asinMatch && asinMatch[1]) {
+          const asin = asinMatch[1];
+          
+          // Delete raw_scraper_data entries for this ASIN
+          const { error: rawDataError } = await supabase
+            .from('raw_scraper_data' as any)
+            .delete()
+            .eq('asin', asin);
+
+          if (rawDataError) {
+            console.error('Error deleting raw_scraper_data:', rawDataError);
+            // Don't throw - flag deletion was successful
+          }
+
+          // Log to filtered_asins to prevent re-ingestion
+          const productName = flag.panel_name || `${flag.manufacturer || 'Unknown'} Panel`;
+          const { error: filterError } = await supabase
+            .from('filtered_asins' as any)
+            .insert({
+              asin: asin,
+              filter_stage: 'ingest',
+              filter_reason: 'admin_deleted',
+              product_name: productName,
+              product_url: flag.web_url,
+              wattage: flag.wattage || null,
+              confidence: 1.0,
+              created_by: 'admin'
+            });
+
+          if (filterError) {
+            console.error('Error logging to filtered_asins:', filterError);
+            // Don't throw - deletion was successful
+          }
+        }
+      }
+
+      toast.success('Flag, panel, and associated scrape data deleted successfully. ASIN has been blacklisted from future ingestion.');
+      
+      // Refresh the list
+      await loadFlags();
+    } catch (error) {
+      console.error('Error deleting flag:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete flag');
+    } finally {
+      setDeleteDialog({ isOpen: false, flag: null });
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ isOpen: false, flag: null });
   };
 
   const getStatusIcon = (status: string) => {
@@ -264,6 +383,15 @@ export const FlagQueue = () => {
         </div>
       </div>
 
+      {/* Filter Tabs */}
+      <Tabs value={flagFilter} onValueChange={(value) => setFlagFilter(value as 'all' | 'user' | 'system')}>
+        <TabsList>
+          <TabsTrigger value="all">All Flags</TabsTrigger>
+          <TabsTrigger value="user">User Reports</TabsTrigger>
+          <TabsTrigger value="system">Missing Data</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Flags List */}
       {flags.length === 0 ? (
         <Card>
@@ -281,8 +409,16 @@ export const FlagQueue = () => {
                   <div className="space-y-2">
                     <CardTitle className="text-lg">{flag.panel_name}</CardTitle>
                     <CardDescription>
-                      {flag.manufacturer} • {flag.wattage}W • ${flag.price_usd}
+                      {flag.manufacturer} • {flag.wattage ? `${flag.wattage}W` : 'Power N/A'} • {flag.price_usd ? `$${flag.price_usd}` : 'Price N/A'}
                     </CardDescription>
+                    {flag.flag_type?.startsWith('system_') && (
+                      <Badge variant="secondary" className="mb-2">
+                        System Flag: Missing Data
+                      </Badge>
+                    )}
+                    <div className="text-sm text-muted-foreground">
+                      Missing fields: {flag.flagged_fields?.join(', ')}
+                    </div>
                     {flag.web_url && extractASIN(flag.web_url) && (
                       <div className="text-sm">
                         <a 
@@ -374,6 +510,15 @@ export const FlagQueue = () => {
                     >
                       <Edit className="w-4 h-4 mr-1" />
                       Review
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteClick(flag)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      Delete
                     </Button>
                   </div>
                 )}
@@ -475,15 +620,29 @@ export const FlagQueue = () => {
               Cancel
             </Button>
             <Button
+              variant="ghost"
+              onClick={() => {
+                if (selectedFlag) {
+                  setSelectedFlag(null);
+                  handleDeleteClick(selectedFlag);
+                }
+              }}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              disabled={actionLoading}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Delete
+            </Button>
+            <Button
               variant="destructive"
-              onClick={() => selectedFlag && handleFlagAction(selectedFlag.id, 'reject')}
+              onClick={() => selectedFlag && handleFlagAction(selectedFlag.id, 'reject', adminNote)}
               disabled={actionLoading}
             >
               <X className="w-4 h-4 mr-1" />
               Reject
             </Button>
             <Button
-              onClick={() => selectedFlag && handleFlagAction(selectedFlag.id, 'approve')}
+              onClick={() => selectedFlag && handleFlagAction(selectedFlag.id, 'approve', adminNote)}
               disabled={actionLoading}
             >
               <Check className="w-4 h-4 mr-1" />
@@ -492,6 +651,29 @@ export const FlagQueue = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialog.isOpen} onOpenChange={handleDeleteCancel}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Flag?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this flag for panel: <strong>{deleteDialog.flag?.panel_name}</strong>?
+              <br /><br />
+              This action cannot be undone. The flag will be permanently removed from the database.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

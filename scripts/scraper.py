@@ -287,6 +287,7 @@ class ScraperAPIParser:
     def parse_product_data(api_response: Dict) -> Optional[Dict]:
         """
         Parse ScraperAPI JSON response into database-ready format.
+        Only name, manufacturer, and ASIN are required. All specs are optional.
         
         Args:
             api_response: Raw JSON response from ScraperAPI
@@ -297,49 +298,61 @@ class ScraperAPIParser:
         try:
             # Initialize failure tracking
             parsing_failures = []
+            missing_fields = []
             
             product_info = api_response.get('product_information', {})
             
             # Get ASIN early for error logging
             asin = api_response.get('asin') or product_info.get('ASIN')
             
-            # Required fields
+            # REQUIRED: Name
             name = api_response.get('name')
             if not name:
                 parsing_failures.append("Missing product name")
                 logger.error("Product name is missing")
                 return None
             
-            # Extract manufacturer from brand
+            # REQUIRED: Manufacturer
             manufacturer = api_response.get('brand', '').replace('Visit the ', '').replace(' Store', '').strip()
             if not manufacturer:
                 # Try to get from product_information
                 manufacturer = product_info.get('Brand', 'Unknown')
+            if not manufacturer or manufacturer == 'Unknown':
+                parsing_failures.append("Missing manufacturer")
+                logger.error("Manufacturer is missing")
+                return None
             
-            # Parse dimensions
+            # REQUIRED: ASIN
+            if not asin:
+                parsing_failures.append("Missing ASIN")
+                logger.error("ASIN is missing")
+                return None
+            
+            # OPTIONAL: Dimensions
             dimensions_str = product_info.get('Product Dimensions', '')
             dimensions = UnitConverter.parse_dimension_string(dimensions_str)
             if not dimensions:
                 parsing_failures.append(f"Failed to parse dimensions: '{dimensions_str}'")
-                logger.error(f"Failed to parse dimensions: {dimensions_str}")
-                return None
-            length_cm, width_cm = dimensions
+                missing_fields.append('dimensions')
+                length_cm, width_cm = None, None
+            else:
+                length_cm, width_cm = dimensions
             
-            # Parse weight
+            # OPTIONAL: Weight
             weight_str = product_info.get('Item Weight', '')
             weight_kg = UnitConverter.parse_weight_string(weight_str)
             if not weight_kg:
                 parsing_failures.append(f"Failed to parse weight: '{weight_str}'")
-                logger.error(f"Failed to parse weight: {weight_str}")
-                return None
+                missing_fields.append('weight')
+                weight_kg = None
             
-            # Parse wattage
+            # OPTIONAL: Wattage
             wattage_str = product_info.get('Maximum Power', '')
             wattage = UnitConverter.parse_power_string(wattage_str, context=f"ASIN {asin}")
             if not wattage:
                 parsing_failures.append(f"Failed to parse wattage: '{wattage_str}'")
-                logger.error(f"Failed to parse wattage: {wattage_str}")
-                return None
+                missing_fields.append('wattage')
+                wattage = None
             
             # Parse voltage (optional)
             # Note: Some products list "Maximum Voltage" as system voltage (e.g. 1000V)
@@ -352,17 +365,17 @@ class ScraperAPIParser:
             # System voltages can be 600V, 1000V, 1500V
             # We'll store them but they should be interpreted carefully
             
-            # Parse price
+            # OPTIONAL: Price
             price_str = api_response.get('pricing', '')
             price_usd = UnitConverter.parse_price_string(price_str)
             if not price_usd:
                 parsing_failures.append(f"Failed to parse price: '{price_str}'")
+                missing_fields.append('price')
                 # Enhanced error logging with relevant fields for debugging
                 logger.error(f"Failed to parse price: '{price_str}'")
                 logger.error(f"ASIN: {asin}, Name: {name}, Manufacturer: {manufacturer}")
                 logger.error(f"Available pricing data: {api_response.get('pricing', 'N/A')}")
                 logger.error(f"Product info keys: {list(product_info.keys()) if product_info else 'None'}")
-                # Don't return None for price - it's optional
                 price_usd = None
             
             # Optional fields
@@ -374,6 +387,7 @@ class ScraperAPIParser:
             
             # Build database-ready dictionary
             panel_data = {
+                'asin': asin,
                 'name': name,
                 'manufacturer': manufacturer,
                 'length_cm': length_cm,
@@ -385,7 +399,8 @@ class ScraperAPIParser:
                 'description': description,
                 'image_url': image_url,
                 'web_url': web_url,
-                'parsing_failures': parsing_failures  # Add failure details
+                'parsing_failures': parsing_failures,
+                'missing_fields': missing_fields  # NEW: Track missing fields
             }
             
             return panel_data

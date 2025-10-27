@@ -17,17 +17,19 @@ import { isAdminUser } from "@/lib/adminUtils";
 
 interface SolarPanel {
   id: string;
+  asin: string;
   name: string;
   manufacturer: string;
-  length_cm: number;
-  width_cm: number;
-  weight_kg: number;
-  wattage: number;
-  voltage: number;
-  price_usd: number;
-  description: string;
-  image_url: string;
-  web_url: string;
+  length_cm: number | null;  // Now nullable
+  width_cm: number | null;   // Now nullable
+  weight_kg: number | null;  // Now nullable
+  wattage: number | null;    // Now nullable
+  voltage: number | null;
+  price_usd: number | null;  // Now nullable
+  description: string | null;
+  image_url: string | null;
+  web_url: string | null;
+  missing_fields?: string[];  // NEW
   flag_count?: number;
   user_verified_overrides?: string[];
   pending_flags?: number;
@@ -131,6 +133,7 @@ const Index = () => {
     wattsPerKgRange: [0, 100] as [number, number],
     wattsPerSqMRange: [0, 300] as [number, number],
     showFavoritesOnly: false,
+    showIncomplete: true,  // NEW: Default to showing incomplete panels
   });
 
   // Initialize user preferences hook
@@ -196,6 +199,7 @@ const Index = () => {
           wattsPerKgRange: [Math.min(...wattsPerKgs), Math.max(...wattsPerKgs)],
           wattsPerSqMRange: [Math.min(...wattsPerSqMs), Math.max(...wattsPerSqMs)],
           showFavoritesOnly: false,
+          showIncomplete: true,  // NEW: Reset to showing incomplete panels
         });
       }
     } catch (error) {
@@ -221,47 +225,54 @@ const Index = () => {
       };
     }
     
-    const pricePerWatts = panels.map(p => p.price_usd / p.wattage);
-    const wattsPerKgs = panels.map(p => p.wattage / p.weight_kg);
-    const wattsPerSqMs = panels.map(p => p.wattage / ((p.length_cm * p.width_cm) / 10000));
+    // Filter out null values for calculations
+    const validWattages = panels.filter(p => p.wattage !== null).map(p => p.wattage!);
+    const validVoltages = panels.filter(p => p.voltage !== null).map(p => p.voltage!);
+    const validPrices = panels.filter(p => p.price_usd !== null).map(p => p.price_usd!);
+    const validWeights = panels.filter(p => p.weight_kg !== null).map(p => p.weight_kg!);
+    const validLengths = panels.filter(p => p.length_cm !== null).map(p => p.length_cm!);
+    const validWidths = panels.filter(p => p.width_cm !== null).map(p => p.width_cm!);
+    const pricePerWatts = panels.filter(p => p.price_usd !== null && p.wattage !== null).map(p => p.price_usd! / p.wattage!);
+    const wattsPerKgs = panels.filter(p => p.wattage !== null && p.weight_kg !== null).map(p => p.wattage! / p.weight_kg!);
+    const wattsPerSqMs = panels.filter(p => p.wattage !== null && p.length_cm !== null && p.width_cm !== null).map(p => p.wattage! / ((p.length_cm! * p.width_cm!) / 10000));
     
     return {
-      wattage: {
-        min: Math.min(...panels.map(p => p.wattage)),
-        max: Math.max(...panels.map(p => p.wattage))
-      },
-      voltage: {
-        min: Math.min(...panels.map(p => p.voltage)),
-        max: Math.max(...panels.map(p => p.voltage))
-      },
-      price: {
-        min: Math.min(...panels.map(p => p.price_usd)),
-        max: Math.max(...panels.map(p => p.price_usd))
-      },
-      weight: {
-        min: Math.min(...panels.map(p => p.weight_kg)),
-        max: Math.max(...panels.map(p => p.weight_kg))
-      },
-      length: {
-        min: Math.min(...panels.map(p => p.length_cm)),
-        max: Math.max(...panels.map(p => p.length_cm))
-      },
-      width: {
-        min: Math.min(...panels.map(p => p.width_cm)),
-        max: Math.max(...panels.map(p => p.width_cm))
-      },
-      pricePerWatt: {
+      wattage: validWattages.length > 0 ? {
+        min: Math.min(...validWattages),
+        max: Math.max(...validWattages)
+      } : { min: 0, max: 1000 },
+      voltage: validVoltages.length > 0 ? {
+        min: Math.min(...validVoltages),
+        max: Math.max(...validVoltages)
+      } : { min: 0, max: 100 },
+      price: validPrices.length > 0 ? {
+        min: Math.min(...validPrices),
+        max: Math.max(...validPrices)
+      } : { min: 0, max: 1000 },
+      weight: validWeights.length > 0 ? {
+        min: Math.min(...validWeights),
+        max: Math.max(...validWeights)
+      } : { min: 0, max: 100 },
+      length: validLengths.length > 0 ? {
+        min: Math.min(...validLengths),
+        max: Math.max(...validLengths)
+      } : { min: 0, max: 300 },
+      width: validWidths.length > 0 ? {
+        min: Math.min(...validWidths),
+        max: Math.max(...validWidths)
+      } : { min: 0, max: 200 },
+      pricePerWatt: pricePerWatts.length > 0 ? {
         min: Math.min(...pricePerWatts),
         max: Math.max(...pricePerWatts)
-      },
-      wattsPerKg: {
+      } : { min: 0, max: 10 },
+      wattsPerKg: wattsPerKgs.length > 0 ? {
         min: Math.min(...wattsPerKgs),
         max: Math.max(...wattsPerKgs)
-      },
-      wattsPerSqM: {
+      } : { min: 0, max: 100 },
+      wattsPerSqM: wattsPerSqMs.length > 0 ? {
         min: Math.min(...wattsPerSqMs),
         max: Math.max(...wattsPerSqMs)
-      },
+      } : { min: 0, max: 300 },
     };
   }, [panels]);
 
@@ -277,28 +288,25 @@ const Index = () => {
         return false;
       }
 
-      const pricePerWatt = panel.price_usd / panel.wattage;
-      const wattsPerKg = panel.wattage / panel.weight_kg;
-      const wattsPerSqM = panel.wattage / ((panel.length_cm * panel.width_cm) / 10000);
+      // Filter for incomplete panels if disabled
+      if (!filters.showIncomplete && panel.missing_fields && panel.missing_fields.length > 0) {
+        return false;
+      }
+
+      // Calculate metrics only if values exist
+      const pricePerWatt = panel.price_usd && panel.wattage ? panel.price_usd / panel.wattage : null;
+      const wattsPerKg = panel.wattage && panel.weight_kg ? panel.wattage / panel.weight_kg : null;
+      const wattsPerSqM = panel.wattage && panel.length_cm && panel.width_cm ? panel.wattage / ((panel.length_cm * panel.width_cm) / 10000) : null;
       
-      return panel.wattage >= filters.wattageRange[0] &&
-        panel.wattage <= filters.wattageRange[1] &&
-        panel.voltage >= filters.voltageRange[0] &&
-        panel.voltage <= filters.voltageRange[1] &&
-        panel.price_usd >= filters.priceRange[0] &&
-        panel.price_usd <= filters.priceRange[1] &&
-        panel.weight_kg >= filters.weightRange[0] &&
-        panel.weight_kg <= filters.weightRange[1] &&
-        panel.length_cm >= filters.lengthRange[0] &&
-        panel.length_cm <= filters.lengthRange[1] &&
-        panel.width_cm >= filters.widthRange[0] &&
-        panel.width_cm <= filters.widthRange[1] &&
-        pricePerWatt >= filters.pricePerWattRange[0] &&
-        pricePerWatt <= filters.pricePerWattRange[1] &&
-        wattsPerKg >= filters.wattsPerKgRange[0] &&
-        wattsPerKg <= filters.wattsPerKgRange[1] &&
-        wattsPerSqM >= filters.wattsPerSqMRange[0] &&
-        wattsPerSqM <= filters.wattsPerSqMRange[1];
+      return (panel.wattage === null || (panel.wattage >= filters.wattageRange[0] && panel.wattage <= filters.wattageRange[1])) &&
+        (panel.voltage === null || (panel.voltage >= filters.voltageRange[0] && panel.voltage <= filters.voltageRange[1])) &&
+        (panel.price_usd === null || (panel.price_usd >= filters.priceRange[0] && panel.price_usd <= filters.priceRange[1])) &&
+        (panel.weight_kg === null || (panel.weight_kg >= filters.weightRange[0] && panel.weight_kg <= filters.weightRange[1])) &&
+        (panel.length_cm === null || (panel.length_cm >= filters.lengthRange[0] && panel.length_cm <= filters.lengthRange[1])) &&
+        (panel.width_cm === null || (panel.width_cm >= filters.widthRange[0] && panel.width_cm <= filters.widthRange[1])) &&
+        (pricePerWatt === null || (pricePerWatt >= filters.pricePerWattRange[0] && pricePerWatt <= filters.pricePerWattRange[1])) &&
+        (wattsPerKg === null || (wattsPerKg >= filters.wattsPerKgRange[0] && wattsPerKg <= filters.wattsPerKgRange[1])) &&
+        (wattsPerSqM === null || (wattsPerSqM >= filters.wattsPerSqMRange[0] && wattsPerSqM <= filters.wattsPerSqMRange[1]));
     });
   }, [panels, filters, user, isPanelHidden, isPanelFavorite, fadingOutPanels]);
 
@@ -394,6 +402,7 @@ const Index = () => {
       wattsPerKgRange: [bounds.wattsPerKg.min, bounds.wattsPerKg.max],
       wattsPerSqMRange: [bounds.wattsPerSqM.min, bounds.wattsPerSqM.max],
       showFavoritesOnly: false,
+      showIncomplete: true,  // NEW: Reset to showing incomplete panels
     });
   };
 

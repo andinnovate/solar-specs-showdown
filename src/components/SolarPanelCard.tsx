@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star } from "lucide-react";
+import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star, AlertCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/unitConversions";
 import { FlagIcon } from "@/components/FlagIcon";
@@ -10,17 +10,19 @@ import { useState, useEffect } from "react";
 
 interface SolarPanel {
   id: string;
+  asin: string;
   name: string;
   manufacturer: string;
-  length_cm: number;
-  width_cm: number;
-  weight_kg: number;
-  wattage: number;
-  voltage: number;
-  price_usd: number;
-  description: string;
-  image_url: string;
-  web_url: string;
+  length_cm: number | null;  // Now nullable
+  width_cm: number | null;   // Now nullable
+  weight_kg: number | null;  // Now nullable
+  wattage: number | null;    // Now nullable
+  voltage: number | null;
+  price_usd: number | null;  // Now nullable
+  description: string | null;
+  image_url: string | null;
+  web_url: string | null;
+  missing_fields?: string[];  // NEW
   flag_count?: number;
   user_verified_overrides?: string[];
   pending_flags?: number;
@@ -55,11 +57,27 @@ export const SolarPanelCard = ({
 }: SolarPanelCardProps) => {
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [flagLoading, setFlagLoading] = useState(false);
+
+  // Helper functions for missing data
+  const hasMissingData = (panel: SolarPanel): boolean => {
+    return panel.missing_fields && panel.missing_fields.length > 0;
+  };
+
+  const getMissingFieldsDisplay = (fields: string[]): string => {
+    const fieldMap: Record<string, string> = {
+      'wattage': 'Power rating',
+      'dimensions': 'Dimensions',
+      'weight': 'Weight',
+      'voltage': 'Voltage',
+      'price': 'Price'
+    };
+    return fields.map(f => fieldMap[f] || f).join(', ');
+  };
   
-  const pricePerWatt = (panel.price_usd / panel.wattage).toFixed(2);
-  const wattsPerKg = (panel.wattage / panel.weight_kg).toFixed(2);
-  const areaM2 = ((panel.length_cm * panel.width_cm) / 10000).toFixed(2);
-  const wattsPerSqM = (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0);
+  const pricePerWatt = panel.wattage && panel.price_usd ? (panel.price_usd / panel.wattage).toFixed(2) : null;
+  const wattsPerKg = panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null;
+  const areaM2 = panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null;
+  const wattsPerSqM = panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null;
 
   return (
     <Card className={`overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${
@@ -159,10 +177,22 @@ export const SolarPanelCard = ({
               })()}
             </div>
             <CardDescription>{panel.manufacturer}</CardDescription>
+            {hasMissingData(panel) && (
+              <Badge variant="outline" className="mt-2 text-xs">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                Incomplete data
+              </Badge>
+            )}
           </div>
-          <Badge variant="secondary" className="text-lg font-bold">
-            {panel.wattage}W
-          </Badge>
+          {panel.wattage ? (
+            <Badge variant="secondary" className="text-lg font-bold">
+              {panel.wattage}W
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-sm">
+              Power N/A
+            </Badge>
+          )}
         </div>
       </CardHeader>
 
@@ -175,52 +205,120 @@ export const SolarPanelCard = ({
           <div className="flex items-center gap-2 text-sm">
             <Ruler className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Size:</span>
-            <span className="font-medium">
-              {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
-              <span className="text-muted-foreground text-xs ml-1">
-                ({formatDimensions(panel.length_cm, panel.width_cm, unitSystem)})
+            {panel.length_cm && panel.width_cm ? (
+              <span className="font-medium">
+                {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
+                <span className="text-muted-foreground text-xs ml-1">
+                  ({formatDimensions(panel.length_cm, panel.width_cm, unitSystem)})
+                </span>
               </span>
-            </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not available
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="h-auto p-0 ml-1 text-xs"
+                  onClick={() => setShowFlagModal(true)}
+                >
+                  Help improve
+                </Button>
+              </span>
+            )}
           </div>
           
           <div className="flex items-center gap-2 text-sm">
             <Weight className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Weight:</span>
-            <span className="font-medium">{formatWeight(panel.weight_kg, unitSystem)}</span>
+            {panel.weight_kg ? (
+              <span className="font-medium">{formatWeight(panel.weight_kg, unitSystem)}</span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not available
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="h-auto p-0 ml-1 text-xs"
+                  onClick={() => setShowFlagModal(true)}
+                >
+                  Help improve
+                </Button>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-sm">
             <Zap className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Voltage:</span>
-            <span className="font-medium">{panel.voltage}V</span>
+            {panel.voltage ? (
+              <span className="font-medium">{panel.voltage}V</span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not available
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="h-auto p-0 ml-1 text-xs"
+                  onClick={() => setShowFlagModal(true)}
+                >
+                  Help improve
+                </Button>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-sm">
             <Calculator className="w-4 h-4 text-secondary" />
             <span className="text-muted-foreground">$/W:</span>
-            <span className="font-bold text-secondary">${pricePerWatt}</span>
+            {pricePerWatt ? (
+              <span className="font-bold text-secondary">${pricePerWatt}</span>
+            ) : (
+              <span className="text-sm text-muted-foreground">N/A</span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-sm">
             <Zap className="w-4 h-4 text-accent" />
             <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'lb' : 'kg'}:</span>
-            <span className="font-bold text-accent">
-              {unitSystem === 'imperial' ? (parseFloat(wattsPerKg) / 0.453592).toFixed(1) : wattsPerKg}
-            </span>
+            {wattsPerKg ? (
+              <span className="font-bold text-accent">
+                {unitSystem === 'imperial' ? (parseFloat(wattsPerKg) / 0.453592).toFixed(1) : wattsPerKg}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">N/A</span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-sm col-span-2">
             <Zap className="w-4 h-4 text-accent" />
             <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'ft²' : 'm²'}:</span>
-            <span className="font-bold text-accent">{wattsPerSqM}</span>
+            {wattsPerSqM ? (
+              <span className="font-bold text-accent">{wattsPerSqM}</span>
+            ) : (
+              <span className="text-sm text-muted-foreground">N/A</span>
+            )}
           </div>
         </div>
 
         <div className="pt-2 border-t">
           <div className="flex justify-between items-center">
-            <span className="text-2xl font-bold text-primary">
-              ${panel.price_usd.toFixed(2)}
-            </span>
+            {panel.price_usd ? (
+              <span className="text-2xl font-bold text-primary">
+                ${panel.price_usd.toFixed(2)}
+              </span>
+            ) : (
+              <span className="text-lg text-muted-foreground">
+                Price not available
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="h-auto p-0 ml-1 text-xs"
+                  onClick={() => setShowFlagModal(true)}
+                >
+                  Help improve
+                </Button>
+              </span>
+            )}
             <div className="flex items-center space-x-2">
               <Checkbox
                 id={`select-${panel.id}`}

@@ -50,7 +50,7 @@ export const DatabaseManager = () => {
           return (
             panel.name.toLowerCase().includes(term) ||
             panel.manufacturer.toLowerCase().includes(term) ||
-            panel.wattage.toString().includes(term) ||
+            (panel.wattage && panel.wattage.toString().includes(term)) ||
             (panel.web_url && panel.web_url.toLowerCase().includes(term))
           );
         })
@@ -98,7 +98,7 @@ export const DatabaseManager = () => {
       const changedFields: string[] = [];
       const editableFields = [
         'name', 'manufacturer', 'price_usd', 'wattage', 'voltage',
-        'length_cm', 'width_cm', 'weight_kg', 'web_url', 'image_url', 'description'
+        'length_cm', 'width_cm', 'weight_kg', 'web_url', 'image_url', 'description', 'asin'
       ];
 
       editableFields.forEach(field => {
@@ -107,6 +107,11 @@ export const DatabaseManager = () => {
           changedFields.push(field);
         }
       });
+
+      // Check if ASIN has changed - if so, need to cascade updates
+      const asinChanged = changedFields.includes('asin') && editedPanel.asin && originalPanel.asin;
+      const oldAsin = originalPanel.asin;
+      const newAsin = editedPanel.asin;
 
       // Merge with existing manual overrides
       const existingOverrides = originalPanel.manual_overrides || [];
@@ -126,6 +131,38 @@ export const DatabaseManager = () => {
 
       if (error) throw error;
 
+      // If ASIN changed, cascade updates to related tables
+      if (asinChanged && oldAsin && newAsin) {
+        try {
+          // Update raw_scraper_data entries for this panel
+          const { error: rawDataError } = await supabase
+            .from('raw_scraper_data' as any)
+            .update({ asin: newAsin })
+            .eq('asin', oldAsin);
+
+          if (rawDataError) {
+            console.error('Error updating raw_scraper_data:', rawDataError);
+            toast.warning('Panel updated but failed to update related scrape data');
+          }
+
+          // Update filtered_asins entries
+          const { error: filteredError } = await supabase
+            .from('filtered_asins' as any)
+            .update({ asin: newAsin })
+            .eq('asin', oldAsin);
+
+          if (filteredError) {
+            console.error('Error updating filtered_asins:', filteredError);
+            // Don't show error as this is less critical
+          }
+
+          // Note: user_flags don't have ASIN directly, so no update needed there
+        } catch (cascadeError) {
+          console.error('Error cascading ASIN update:', cascadeError);
+          toast.warning('Panel ASIN updated but some related data may need manual review');
+        }
+      }
+
       if (changedFields.length > 0) {
         toast.success(`Panel updated. ${changedFields.length} field(s) marked as manually edited.`);
       } else {
@@ -144,6 +181,14 @@ export const DatabaseManager = () => {
 
   const deletePanel = async (id: string) => {
     try {
+      // First, get panel details including web_url
+      const { data: panel } = await supabase
+        .from("solar_panels")
+        .select("web_url, name, manufacturer, wattage")
+        .eq("id", id)
+        .single();
+
+      // Delete the panel (raw_scraper_data with panel_id will cascade)
       const { error } = await supabase
         .from("solar_panels")
         .delete()
@@ -151,7 +196,53 @@ export const DatabaseManager = () => {
 
       if (error) throw error;
 
-      toast.success("Panel deleted successfully");
+      // Extract ASIN from web_url and delete orphaned raw_scraper_data
+      // Also log to filtered_asins to prevent re-ingestion
+      if (panel?.web_url) {
+        const asinMatch = panel.web_url.match(/\/dp\/([A-Z0-9]{10})/);
+        if (asinMatch && asinMatch[1]) {
+          const asin = asinMatch[1];
+          
+          // Delete raw_scraper_data entries that match this ASIN and have no panel_id
+          const { error: rawDataError } = await supabase
+            .from("raw_scraper_data" as any)
+            .delete()
+            .eq("asin", asin)
+            .is("panel_id", null);
+
+          if (rawDataError) {
+            console.error("Error deleting orphaned raw_scraper_data:", rawDataError);
+            // Don't throw - panel deletion was successful
+          }
+
+          // Log to filtered_asins to prevent re-ingestion
+          try {
+            const productName = panel.name || `${panel.manufacturer || 'Unknown'} Panel`;
+            const { error: filterError } = await supabase
+              .from("filtered_asins" as any)
+              .insert({
+                asin: asin,
+                filter_stage: 'ingest',
+                filter_reason: 'admin_deleted',
+                product_name: productName,
+                product_url: panel.web_url,
+                wattage: panel.wattage || null,
+                confidence: 1.0,
+                created_by: 'admin'
+              });
+
+            if (filterError) {
+              console.error("Error logging to filtered_asins:", filterError);
+              // Don't throw - panel deletion was successful
+            }
+          } catch (filterErr) {
+            console.error("Error logging deletion to filtered_asins:", filterErr);
+            // Don't throw - panel deletion was successful
+          }
+        }
+      }
+
+      toast.success("Panel deleted successfully. ASIN has been blacklisted from future ingestion.");
       setDeleteConfirm(null);
       loadPanels();
     } catch (error) {
@@ -258,6 +349,28 @@ export const DatabaseManager = () => {
 
                       <div className="space-y-2">
                         <Label className="flex items-center gap-2">
+                          ASIN
+                          {hasManualOverride('asin') && (
+                            <span title="Manually edited - protected from scraper updates">
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </span>
+                          )}
+                        </Label>
+                        {isEditing ? (
+                          <Input
+                            value={currentPanel.asin || ""}
+                            onChange={(e) =>
+                              setEditedPanel({ ...editedPanel, asin: e.target.value })
+                            }
+                            placeholder="B0ABCD1234"
+                          />
+                        ) : (
+                          <p className="text-sm font-mono">{panel.asin}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
                           Manufacturer
                           {hasManualOverride('manufacturer') && (
                             <span title="Manually edited - protected from scraper updates">
@@ -299,7 +412,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.wattage} W</p>
+                            <p className="text-sm">{panel.wattage ? `${panel.wattage} W` : 'N/A'}</p>
                           )}
                         </div>
                         <div className="space-y-2">
@@ -354,7 +467,7 @@ export const DatabaseManager = () => {
                             }
                           />
                         ) : (
-                          <p className="text-sm">${panel.price_usd.toFixed(2)}</p>
+                          <p className="text-sm">${panel.price_usd ? panel.price_usd.toFixed(2) : 'N/A'}</p>
                         )}
                       </div>
 
@@ -381,7 +494,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.length_cm}</p>
+                            <p className="text-sm">{panel.length_cm ?? 'N/A'}</p>
                           )}
                         </div>
                         <div className="space-y-2">
@@ -406,7 +519,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.width_cm}</p>
+                            <p className="text-sm">{panel.width_cm ?? 'N/A'}</p>
                           )}
                         </div>
                         {isEditing && (
@@ -445,7 +558,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.weight_kg}</p>
+                            <p className="text-sm">{panel.weight_kg ?? 'N/A'}</p>
                           )}
                         </div>
                       </div>

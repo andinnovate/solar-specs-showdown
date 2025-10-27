@@ -7,15 +7,17 @@ import { UnitSystem, formatDimensions, formatArea } from "@/lib/unitConversions"
 
 interface SolarPanel {
   id: string;
+  asin: string;
   name: string;
   manufacturer: string;
-  length_cm: number;
-  width_cm: number;
-  weight_kg: number;
-  wattage: number;
-  voltage: number;
-  price_usd: number;
+  length_cm: number | null;  // Now nullable
+  width_cm: number | null;   // Now nullable
+  weight_kg: number | null;  // Now nullable
+  wattage: number | null;    // Now nullable
+  voltage: number | null;
+  price_usd: number | null;  // Now nullable
   web_url?: string | null;
+  missing_fields?: string[];  // NEW
 }
 
 interface VisualComparisonProps {
@@ -90,24 +92,48 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
     const panelVisuals: PanelVisual[] = [];
     
     // Calculate panel dimensions in pixels
-    const panelsWithDimensions = panels.map(panel => ({
+    // Filter out panels with missing dimensions
+    const panelsWithValidDimensions = panels.filter(panel => 
+      panel.length_cm && panel.width_cm && panel.length_cm > 0 && panel.width_cm > 0
+    );
+    
+    if (panelsWithValidDimensions.length === 0) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Layout className="w-5 h-5" />
+              Visual Comparison
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center text-muted-foreground py-8">
+              <Layers className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No panels with valid dimensions available for visual comparison</p>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+    
+    const panelsWithDimensions = panelsWithValidDimensions.map(panel => ({
       panel,
-      width: panel.length_cm * scale,
-      height: panel.width_cm * scale,
+      width: panel.length_cm! * scale,
+      height: panel.width_cm! * scale,
       scale,
-      aspectRatio: (panel.length_cm * scale) / (panel.width_cm * scale)
+      aspectRatio: (panel.length_cm! * scale) / (panel.width_cm! * scale)
     }));
     
     let orderedPanels;
     
     if (viewMode === 'stack') {
       // Sort by length (left-to-right dimension) from small to large
-      orderedPanels = panelsWithDimensions.sort((a, b) => a.panel.length_cm - b.panel.length_cm);
+      orderedPanels = panelsWithDimensions.sort((a, b) => a.panel.length_cm! - b.panel.length_cm!);
     } else {
       // For overlap mode, sort by total area (largest to smallest) so smallest panels appear on top
       orderedPanels = panelsWithDimensions.sort((a, b) => {
-        const areaA = a.panel.length_cm * a.panel.width_cm;
-        const areaB = b.panel.length_cm * b.panel.width_cm;
+        const areaA = a.panel.length_cm! * a.panel.width_cm!;
+        const areaB = b.panel.length_cm! * b.panel.width_cm!;
         return areaB - areaA; // Largest area first (bottom layer), smallest last (top layer)
       });
     }
@@ -292,7 +318,7 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
                         fontWeight: '700'
                       }}
                     >
-                      {panel.wattage}W
+                      {panel.wattage ? `${panel.wattage}W` : 'N/A'}
                     </text>
                   </g>
                 );
@@ -344,16 +370,16 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
                     </div>
                     <Badge variant="secondary" className="text-xs">
                       <Zap className="w-3 h-3 mr-1" />
-                      {panel.wattage}W
+                      {panel.wattage ? `${panel.wattage}W` : 'N/A'}
                     </Badge>
                   </div>
                   
                   <div className="text-xs text-muted-foreground space-y-1">
                     <div>
-                      <span className="font-medium">Dimensions:</span> {formatDimensions(panel.length_cm, panel.width_cm, unitSystem)}
+                      <span className="font-medium">Dimensions:</span> {panel.length_cm && panel.width_cm ? formatDimensions(panel.length_cm, panel.width_cm, unitSystem) : 'N/A'}
                     </div>
                     <div>
-                      <span className="font-medium">Area:</span> {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
+                      <span className="font-medium">Area:</span> {panel.length_cm && panel.width_cm ? formatArea(panel.length_cm, panel.width_cm, unitSystem) : 'N/A'}
                     </div>
                   </div>
                 </div>

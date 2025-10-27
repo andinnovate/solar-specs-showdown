@@ -7,15 +7,17 @@ import { UnitSystem, formatDimensions, formatWeight, formatArea } from "@/lib/un
 
 interface SolarPanel {
   id: string;
+  asin: string;
   name: string;
   manufacturer: string;
-  length_cm: number;
-  width_cm: number;
-  weight_kg: number;
-  wattage: number;
-  voltage: number;
-  price_usd: number;
+  length_cm: number | null;  // Now nullable
+  width_cm: number | null;   // Now nullable
+  weight_kg: number | null;  // Now nullable
+  wattage: number | null;    // Now nullable
+  voltage: number | null;
+  price_usd: number | null;  // Now nullable
   web_url?: string | null;
+  missing_fields?: string[];  // NEW
 }
 
 interface ComparisonTableProps {
@@ -45,10 +47,10 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
   }
 
   const calculateMetrics = (panel: SolarPanel) => ({
-    pricePerWatt: (panel.price_usd / panel.wattage).toFixed(2),
-    wattsPerKg: (panel.wattage / panel.weight_kg).toFixed(2),
-    areaM2: ((panel.length_cm * panel.width_cm) / 10000).toFixed(2),
-    wattsPerSqM: (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0),
+    pricePerWatt: panel.wattage && panel.price_usd ? (panel.price_usd / panel.wattage).toFixed(2) : null,
+    wattsPerKg: panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null,
+    areaM2: panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null,
+    wattsPerSqM: panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null,
   });
 
   return (
@@ -131,9 +133,13 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  <Badge variant="secondary" className="text-base">
-                    {panel.wattage}W
-                  </Badge>
+                  {panel.wattage ? (
+                    <Badge variant="secondary" className="text-base">
+                      {panel.wattage}W
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground">N/A</span>
+                  )}
                 </TableCell>
               ))}
             </TableRow>
@@ -147,7 +153,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  {panel.voltage}V
+                  {panel.voltage ? `${panel.voltage}V` : <span className="text-muted-foreground">N/A</span>}
                 </TableCell>
               ))}
             </TableRow>
@@ -161,7 +167,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  ${panel.price_usd.toFixed(2)}
+                  {panel.price_usd ? `$${panel.price_usd.toFixed(2)}` : <span className="text-muted-foreground">N/A</span>}
                 </TableCell>
               ))}
             </TableRow>
@@ -177,7 +183,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                     onMouseEnter={() => onPanelHover?.(panel.id)}
                     onMouseLeave={() => onPanelHover?.(null)}
                   >
-                    ${metrics.pricePerWatt}
+                    {metrics.pricePerWatt ? `$${metrics.pricePerWatt}` : <span className="text-muted-foreground">N/A</span>}
                   </TableCell>
                 );
               })}
@@ -192,7 +198,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  {formatDimensions(panel.length_cm, panel.width_cm, unitSystem)}
+                  {panel.length_cm && panel.width_cm ? formatDimensions(panel.length_cm, panel.width_cm, unitSystem) : <span className="text-muted-foreground">N/A</span>}
                 </TableCell>
               ))}
             </TableRow>
@@ -206,7 +212,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  {formatArea(panel.length_cm, panel.width_cm, unitSystem)}
+                  {panel.length_cm && panel.width_cm ? formatArea(panel.length_cm, panel.width_cm, unitSystem) : <span className="text-muted-foreground">N/A</span>}
                 </TableCell>
               ))}
             </TableRow>
@@ -220,7 +226,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  {formatWeight(panel.weight_kg, unitSystem)}
+                  {panel.weight_kg ? formatWeight(panel.weight_kg, unitSystem) : <span className="text-muted-foreground">N/A</span>}
                 </TableCell>
               ))}
             </TableRow>
@@ -229,20 +235,33 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
               <TableCell className="font-medium">Watts/{unitSystem === 'imperial' ? 'lb' : 'kg'}</TableCell>
               {panels.map((panel) => {
                 const metrics = calculateMetrics(panel);
-                const wattsPerKgNum = panel.wattage / panel.weight_kg;
-                const wattsPerUnit = unitSystem === 'imperial' 
-                  ? (wattsPerKgNum / 0.453592).toFixed(1) // Convert kg to lb
-                  : wattsPerKgNum.toFixed(2);
-                return (
-                  <TableCell 
-                    key={panel.id} 
-                    className={`${getCellClassName(panel.id)} font-bold text-accent text-lg`}
-                    onMouseEnter={() => onPanelHover?.(panel.id)}
-                    onMouseLeave={() => onPanelHover?.(null)}
-                  >
-                    {wattsPerUnit}W/{unitSystem === 'imperial' ? 'lb' : 'kg'}
-                  </TableCell>
-                );
+                if (metrics.wattsPerKg) {
+                  const wattsPerKgNum = parseFloat(metrics.wattsPerKg);
+                  const wattsPerUnit = unitSystem === 'imperial' 
+                    ? (wattsPerKgNum / 0.453592).toFixed(1) // Convert kg to lb
+                    : wattsPerKgNum.toFixed(2);
+                  return (
+                    <TableCell 
+                      key={panel.id} 
+                      className={`${getCellClassName(panel.id)} font-bold text-accent text-lg`}
+                      onMouseEnter={() => onPanelHover?.(panel.id)}
+                      onMouseLeave={() => onPanelHover?.(null)}
+                    >
+                      {wattsPerUnit}W/{unitSystem === 'imperial' ? 'lb' : 'kg'}
+                    </TableCell>
+                  );
+                } else {
+                  return (
+                    <TableCell 
+                      key={panel.id} 
+                      className={`${getCellClassName(panel.id)} text-muted-foreground`}
+                      onMouseEnter={() => onPanelHover?.(panel.id)}
+                      onMouseLeave={() => onPanelHover?.(null)}
+                    >
+                      N/A
+                    </TableCell>
+                  );
+                }
               })}
             </TableRow>
 
@@ -257,7 +276,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                     onMouseEnter={() => onPanelHover?.(panel.id)}
                     onMouseLeave={() => onPanelHover?.(null)}
                   >
-                    {metrics.wattsPerSqM}W/{unitSystem === 'imperial' ? 'ft²' : 'm²'}
+                    {metrics.wattsPerSqM ? `${metrics.wattsPerSqM}W/${unitSystem === 'imperial' ? 'ft²' : 'm²'}` : <span className="text-muted-foreground">N/A</span>}
                   </TableCell>
                 );
               })}

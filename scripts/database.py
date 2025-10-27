@@ -110,14 +110,34 @@ class SolarPanelDB:
             return False
     
     async def add_new_panel(self, panel_data: Dict) -> Optional[str]:
-        """Add new panel to database"""
+        """Add new panel to database with optional specs"""
         try:
-            result = self.client.table('solar_panels').insert(panel_data).execute()
+            # Extract missing_fields before insertion
+            missing_fields = panel_data.pop('missing_fields', [])
+            
+            # Prepare data with explicit None for missing fields
+            insert_data = {
+                'asin': panel_data['asin'],
+                'name': panel_data['name'],
+                'manufacturer': panel_data['manufacturer'],
+                'length_cm': panel_data.get('length_cm'),  # May be None
+                'width_cm': panel_data.get('width_cm'),    # May be None
+                'weight_kg': panel_data.get('weight_kg'),  # May be None
+                'wattage': panel_data.get('wattage'),      # May be None
+                'voltage': panel_data.get('voltage'),
+                'price_usd': panel_data.get('price_usd'),  # May be None
+                'description': panel_data.get('description'),
+                'image_url': panel_data.get('image_url'),
+                'web_url': panel_data.get('web_url'),
+                'missing_fields': missing_fields
+            }
+            
+            result = self.client.table('solar_panels').insert(insert_data).execute()
             if result.data:
                 panel_id = result.data[0]['id']
                 await self.log_script_execution(
                     'database', 'INFO', 
-                    f'Added new panel: {panel_id}'
+                    f'Added new panel: {panel_id} (missing fields: {missing_fields})'
                 )
                 return panel_id
             return None

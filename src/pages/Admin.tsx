@@ -11,6 +11,7 @@ import { UserManagement } from "@/components/UserManagement";
 import { DevSupabaseConfig } from "@/components/DevSupabaseConfig";
 import { DatabaseManager } from "@/components/DatabaseManager";
 import { FlagQueue } from "@/components/FlagQueue";
+import { ScrapeFailuresReview } from "@/components/ScrapeFailuresReview";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
 import { isAdminUser } from "@/lib/adminUtils";
@@ -284,7 +285,7 @@ const Admin = () => {
           </div>
         ) : (
           <Tabs defaultValue="import" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="import" className="flex items-center gap-2">
                 <Upload className="w-4 h-4" />
                 CSV Import
@@ -296,6 +297,10 @@ const Admin = () => {
               <TabsTrigger value="flags" className="flex items-center gap-2">
                 <Flag className="w-4 h-4" />
                 Flag Queue
+              </TabsTrigger>
+              <TabsTrigger value="failures" className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Scrape Failures
               </TabsTrigger>
               <TabsTrigger value="logs" className="flex items-center gap-2">
                 <FileText className="w-4 h-4" />
@@ -342,6 +347,10 @@ const Admin = () => {
 
             <TabsContent value="flags" className="space-y-6">
               <FlagQueue />
+            </TabsContent>
+
+            <TabsContent value="failures" className="space-y-6">
+              <ScrapeFailuresReview />
             </TabsContent>
 
             <TabsContent value="logs" className="space-y-6">

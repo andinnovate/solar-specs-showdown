@@ -144,6 +144,34 @@ async def log_filtered_asin(asin: str, filter_stage: str, filter_reason: str,
         return None
 
 
+async def create_admin_review_flag(asin: str, panel_id: str, missing_fields: list, parsing_failures: list, logger):
+    """
+    Create system-generated flag for panels with missing data.
+    """
+    try:
+        client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        
+        # Create flag with system type
+        flag_data = {
+            'panel_id': panel_id,
+            'user_id': None,  # System-generated
+            'flag_type': 'system_missing_data',
+            'flagged_fields': missing_fields,
+            'user_comment': f"Automatic flag: Missing or failed to parse: {', '.join(missing_fields)}",
+            'status': 'pending',
+            'suggested_corrections': {}
+        }
+        
+        result = client.table('user_flags').insert(flag_data).execute()
+        logger.log_script_event("INFO", f"Created admin review flag for ASIN {asin} (missing: {', '.join(missing_fields)})")
+        
+        return result.data[0]['id'] if result.data else None
+        
+    except Exception as e:
+        logger.log_script_event("ERROR", f"Failed to create admin review flag for ASIN {asin}: {str(e)}")
+        return None
+
+
 async def check_recent_raw_data(asin: str, hours_threshold: int = 24) -> Optional[Dict]:
     """
     Check if we have recent raw response data for an ASIN.
@@ -197,6 +225,20 @@ async def ingest_single_asin(
         True if successful, False otherwise
     """
     try:
+        # Check if this ASIN is in the filtered_asins table (blocked by admin or filtering logic)
+        client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        filtered_check = client.table('filtered_asins').select('filter_reason, product_name').eq('asin', asin).execute()
+        
+        if filtered_check.data:
+            filter_reason = filtered_check.data[0].get('filter_reason', 'unknown')
+            product_name = filtered_check.data[0].get('product_name', asin)
+            logger.log_script_event(
+                "INFO",
+                f"ASIN {asin} ({product_name}) is in filtered_asins table (reason: {filter_reason}). Skipping ingestion."
+            )
+            await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}", is_permanent=True)
+            return False
+
         # Check for duplicates BEFORE making API calls to save credits
         existing_panel = await db.get_panel_by_asin(asin)
         
@@ -223,27 +265,47 @@ async def ingest_single_asin(
             raw_response = recent_raw_data.get('raw_response', {})
             metadata = recent_raw_data.get('processing_metadata', {})
             
-            # Try to parse the stored raw data
-            from scripts.scraper import ScraperAPIParser
-            parser = ScraperAPIParser()
-            parsed_data = parser.parse_product_data(raw_response)
+            # Check if the stored data represents a successful parsing attempt
+            parsing_failed = metadata.get('parsing_failed', False)
+            filtered = metadata.get('filtered', False)
             
-            if parsed_data:
-                # Successfully parsed stored data
-                product_data = {
-                    'parsed_data': parsed_data,
-                    'raw_response': raw_response,
-                    'metadata': metadata
-                }
-                logger.log_script_event("INFO", f"Successfully parsed stored raw data for ASIN: {asin}")
+            if parsing_failed or filtered:
+                # Stored data represents a failed attempt - don't retry parsing
+                logger.log_script_event(
+                    "INFO", 
+                    f"Stored raw data for ASIN {asin} represents a failed attempt (parsing_failed: {parsing_failed}, filtered: {filtered}). Skipping reprocessing."
+                )
+                
+                # Mark as permanently failed since we already know it fails
+                if filtered:
+                    filter_reason = metadata.get('filter_reason', 'unknown_filter')
+                    await asin_manager.mark_asin_failed(asin, f"Filtered: {filter_reason}", is_permanent=True)
+                else:
+                    await asin_manager.mark_asin_failed(asin, "Failed to parse product data", is_permanent=True)
+                
+                return False
             else:
-                # Parsing failed on stored data
-                product_data = {
-                    'parsed_data': None,
-                    'raw_response': raw_response,
-                    'metadata': metadata
-                }
-                logger.log_script_event("WARNING", f"Failed to parse stored raw data for ASIN: {asin}")
+                # Stored data represents a successful attempt - try to parse it
+                from scripts.scraper import ScraperAPIParser
+                parser = ScraperAPIParser()
+                parsed_data = parser.parse_product_data(raw_response)
+                
+                if parsed_data:
+                    # Successfully parsed stored data
+                    product_data = {
+                        'parsed_data': parsed_data,
+                        'raw_response': raw_response,
+                        'metadata': metadata
+                    }
+                    logger.log_script_event("INFO", f"Successfully parsed stored raw data for ASIN: {asin}")
+                else:
+                    # Parsing failed on stored data (unexpected)
+                    product_data = {
+                        'parsed_data': None,
+                        'raw_response': raw_response,
+                        'metadata': metadata
+                    }
+                    logger.log_script_event("WARNING", f"Failed to parse stored raw data for ASIN: {asin}")
         else:
             # No recent data found, proceed with API call
             logger.log_script_event("INFO", f"No recent raw data found for ASIN: {asin}. Making API call.")
@@ -306,7 +368,7 @@ async def ingest_single_asin(
             metadata['parsing_failures'] = parsing_failures
             logger.log_script_event("INFO", f"ASIN {asin} had parsing failures: {', '.join(parsing_failures)}")
         
-        # Apply wattage filtering
+        # Apply wattage filtering (only if wattage exists)
         wattage = parsed_data.get('wattage')
         if wattage is not None and wattage < 30:
             filter_reason = f"wattage_too_low_{wattage}W"
@@ -338,6 +400,9 @@ async def ingest_single_asin(
         # Add ASIN to parsed data
         parsed_data['asin'] = asin
         
+        # Extract missing_fields before removing parsing_failures
+        missing_fields = parsed_data.get('missing_fields', [])
+        
         # Remove parsing_failures from parsed_data before database insertion
         # (parsing_failures is stored in raw_scraper_data metadata, not solar_panels table)
         parsed_data.pop('parsing_failures', None)
@@ -356,6 +421,16 @@ async def ingest_single_asin(
             
             # Save raw JSON data for future analysis
             await save_raw_scraper_data(asin, panel_id, raw_response, metadata, logger)
+            
+            # Check if panel has missing fields and create admin flag
+            if missing_fields:
+                await create_admin_review_flag(
+                    asin=asin,
+                    panel_id=panel_id,
+                    missing_fields=missing_fields,
+                    parsing_failures=parsing_failures,
+                    logger=logger
+                )
             
             # Track scraper usage
             await db.track_scraper_usage(
