@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star, AlertCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, formatWattageWithPieces } from "@/lib/unitConversions";
+import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces } from "@/lib/unitConversions";
 import { FlagIcon } from "@/components/FlagIcon";
 import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
 import { useState, useEffect } from "react";
@@ -195,9 +195,16 @@ export const SolarPanelCard = ({
             )}
           </div>
           {panel.wattage ? (
-            <Badge variant="secondary" className="text-lg font-bold">
-              {formatWattageWithPieces(panel.wattage, panel.piece_count || 1, unitSystem)}
-            </Badge>
+            <div className="text-right">
+              <Badge variant="secondary" className="text-lg font-bold">
+                {panel.wattage * (panel.piece_count || 1)}W
+              </Badge>
+              {(panel.piece_count || 1) > 1 && (
+                <div className="text-xs text-muted-foreground mt-1">
+                  {panel.wattage}W/ea × {panel.piece_count} pcs
+                </div>
+              )}
+            </div>
           ) : (
             <Badge variant="outline" className="text-sm">
               Power N/A
