@@ -213,12 +213,13 @@ export const SolarPanelCard = ({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground line-clamp-2">
-          {panel.description}
-        </p>
+      <CardContent className="flex flex-col h-full">
+        <div className="flex-grow space-y-4">
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {panel.description}
+          </p>
 
-        <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
           <div className="flex items-center gap-2 text-sm">
             <Ruler className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Size:</span>
@@ -317,7 +318,7 @@ export const SolarPanelCard = ({
           </div>
         </div>
 
-        <div className="pt-2 border-t">
+        <div className="pt-4 border-t mt-auto">
           <div className="flex justify-between items-center">
             {panel.price_usd ? (
               <span className="text-2xl font-bold text-primary">
