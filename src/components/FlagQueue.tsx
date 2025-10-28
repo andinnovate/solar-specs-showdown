@@ -149,7 +149,8 @@ export const FlagQueue = () => {
         if (flagFilter === 'system') {
           query = query.like('flag_type', 'system_%');
         } else if (flagFilter === 'user') {
-          query = query.eq('flag_type', 'user');
+          // User reports include both 'user' flags and 'deletion_recommendation' flags
+          query = query.in('flag_type', ['user', 'deletion_recommendation']);
         }
       }
       
