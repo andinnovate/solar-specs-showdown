@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Flag, AlertCircle, LogIn } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Flag, AlertCircle, LogIn, Trash2 } from "lucide-react";
 import { Tables } from "@/integrations/supabase/types";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +17,9 @@ interface FlagSubmission {
   flaggedFields: string[];
   suggestedCorrections: Record<string, string | number>;
   userComment: string;
+  recommendDeletion?: boolean;
+  deletionReason?: string;
+  deletionOtherReason?: string;
 }
 
 interface FlagSubmissionModalProps {
@@ -50,6 +54,9 @@ export const FlagSubmissionModal = ({
   const [flaggedFields, setFlaggedFields] = useState<string[]>([]);
   const [suggestedCorrections, setSuggestedCorrections] = useState<Record<string, string | number>>({});
   const [userComment, setUserComment] = useState("");
+  const [recommendDeletion, setRecommendDeletion] = useState(false);
+  const [deletionReason, setDeletionReason] = useState("");
+  const [deletionOtherReason, setDeletionOtherReason] = useState("");
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -139,7 +146,7 @@ export const FlagSubmissionModal = ({
         if (currentValue !== null && currentValue !== undefined) {
           setSuggestedCorrections(prev => ({
             ...prev,
-            [field]: currentValue
+            [field]: currentValue as string | number
           }));
         }
       }
@@ -171,14 +178,25 @@ export const FlagSubmissionModal = ({
   };
 
   const handleSubmit = () => {
-    if (flaggedFields.length === 0) {
+    if (flaggedFields.length === 0 && !recommendDeletion) {
+      return;
+    }
+
+    if (recommendDeletion && !deletionReason) {
+      return;
+    }
+
+    if (recommendDeletion && deletionReason === 'other' && !deletionOtherReason.trim()) {
       return;
     }
 
     onSubmit({
       flaggedFields,
       suggestedCorrections,
-      userComment
+      userComment,
+      recommendDeletion,
+      deletionReason: recommendDeletion ? deletionReason : undefined,
+      deletionOtherReason: recommendDeletion && deletionReason === 'other' ? deletionOtherReason : undefined
     });
   };
 
@@ -186,6 +204,9 @@ export const FlagSubmissionModal = ({
     setFlaggedFields([]);
     setSuggestedCorrections({});
     setUserComment("");
+    setRecommendDeletion(false);
+    setDeletionReason("");
+    setDeletionOtherReason("");
     onClose();
   };
 
@@ -312,6 +333,73 @@ export const FlagSubmissionModal = ({
             />
           </div>
 
+          {/* Deletion Recommendation */}
+          <div className="space-y-4 p-4 border border-red-200 rounded-lg bg-red-50">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="recommend-deletion"
+                checked={recommendDeletion}
+                onCheckedChange={(checked) => setRecommendDeletion(checked as boolean)}
+              />
+              <Label htmlFor="recommend-deletion" className="text-sm font-medium text-red-800">
+                <Trash2 className="w-4 h-4 inline mr-1" />
+                Recommend deletion of this panel
+              </Label>
+            </div>
+            
+            {recommendDeletion && (
+              <div className="ml-6 space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-red-800">Reason for deletion:</Label>
+                  <RadioGroup value={deletionReason} onValueChange={setDeletionReason}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="not_solar_panel" id="not_solar_panel" />
+                      <Label htmlFor="not_solar_panel" className="text-sm text-red-700">
+                        Not a solar panel
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="wattage_too_low" id="wattage_too_low" />
+                      <Label htmlFor="wattage_too_low" className="text-sm text-red-700">
+                        Wattage too low
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="other" id="other" />
+                      <Label htmlFor="other" className="text-sm text-red-700">
+                        Other
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+                
+                {deletionReason === 'other' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="deletion-other-reason" className="text-sm font-medium text-red-800">
+                      Please specify:
+                    </Label>
+                    <Textarea
+                      id="deletion-other-reason"
+                      placeholder="Explain why this panel should be deleted..."
+                      value={deletionOtherReason}
+                      onChange={(e) => setDeletionOtherReason(e.target.value)}
+                      rows={2}
+                      className="text-sm"
+                    />
+                  </div>
+                )}
+                
+                <div className="flex items-start gap-2 p-3 bg-red-100 border border-red-300 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium">Deletion recommendations will be reviewed by our team.</p>
+                    <p>If approved, this panel will be permanently removed from the database.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Warning */}
           {flaggedFields.length > 0 && (
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -332,10 +420,14 @@ export const FlagSubmissionModal = ({
             </Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={flaggedFields.length === 0 || loading}
+              disabled={(flaggedFields.length === 0 && !recommendDeletion) || loading || (recommendDeletion && !deletionReason) || (recommendDeletion && deletionReason === 'other' && !deletionOtherReason.trim())}
               className="bg-red-600 hover:bg-red-700"
             >
-              {loading ? "Submitting..." : `Submit Flag${flaggedFields.length > 0 ? ` (${flaggedFields.length} field${flaggedFields.length > 1 ? 's' : ''})` : ''}`}
+              {loading ? "Submitting..." : (
+                recommendDeletion ? 
+                  `Submit Deletion Recommendation` : 
+                  `Submit Flag${flaggedFields.length > 0 ? ` (${flaggedFields.length} field${flaggedFields.length > 1 ? 's' : ''})` : ''}`
+              )}
             </Button>
           </DialogFooter>
         )}

@@ -392,16 +392,27 @@ export const SolarPanelCard = ({
             console.log('Current user:', user.id, user.email);
 
             // Submit flag to database
+            const flagInsertData: any = {
+              panel_id: panel.id,
+              user_id: user.id,
+              flagged_fields: flagData.flaggedFields, // This should be JSONB array
+              suggested_corrections: flagData.suggestedCorrections, // This should be JSONB object
+              user_comment: flagData.userComment,
+              status: 'pending'
+            };
+
+            // Add deletion recommendation data if present
+            if (flagData.recommendDeletion) {
+              flagInsertData.flag_type = 'deletion_recommendation';
+              flagInsertData.deletion_reason = flagData.deletionReason;
+              if (flagData.deletionOtherReason) {
+                flagInsertData.deletion_other_reason = flagData.deletionOtherReason;
+              }
+            }
+
             const { data, error } = await (supabase as any)
               .from('user_flags')
-              .insert({
-                panel_id: panel.id,
-                user_id: user.id,
-                flagged_fields: flagData.flaggedFields, // This should be JSONB array
-                suggested_corrections: flagData.suggestedCorrections, // This should be JSONB object
-                user_comment: flagData.userComment,
-                status: 'pending'
-              })
+              .insert(flagInsertData)
               .select()
               .single();
 

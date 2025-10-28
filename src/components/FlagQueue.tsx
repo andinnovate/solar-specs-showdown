@@ -46,7 +46,7 @@ interface FlagData {
   id: string;
   panel_id: string;
   user_id: string | null;  // System flags have null user_id
-  flag_type: string;  // NEW: 'user', 'system_missing_data', 'system_parse_failure'
+  flag_type: string;  // NEW: 'user', 'system_missing_data', 'system_parse_failure', 'deletion_recommendation'
   flagged_fields: string[];
   suggested_corrections: Record<string, any>;
   user_comment: string;
@@ -56,6 +56,8 @@ interface FlagData {
   updated_at: string;
   resolved_at: string;
   resolved_by: string;
+  deletion_reason?: string;
+  deletion_other_reason?: string;
   panel_name: string;
   manufacturer: string;
   wattage: number | null;  // Now nullable
@@ -87,6 +89,12 @@ const fieldLabels: Record<string, string> = {
   web_url: "Web URL",
   image_url: "Image URL",
   description: "Description"
+};
+
+const deletionReasonLabels: Record<string, string> = {
+  not_solar_panel: "Not a solar panel",
+  wattage_too_low: "Wattage too low",
+  other: "Other"
 };
 
 export const FlagQueue = () => {
@@ -217,6 +225,17 @@ export const FlagQueue = () => {
         throw new Error('You must be logged in to manage flags');
       }
 
+      // Get the flag data to check if it's a deletion recommendation
+      const { data: flagData, error: flagError } = await supabase
+        .from('user_flags' as any)
+        .select('flag_type, panel_id')
+        .eq('id', flagId)
+        .single();
+
+      if (flagError) {
+        throw new Error(`Failed to get flag data: ${flagError.message}`);
+      }
+
       // Update the flag status
       const { error } = await supabase
         .from('user_flags' as any)
@@ -231,8 +250,24 @@ export const FlagQueue = () => {
       if (error) {
         throw new Error(`Failed to ${action} flag: ${error.message}`);
       }
+
+      // If approving a deletion recommendation, delete the panel
+      if (action === 'approve' && (flagData as any).flag_type === 'deletion_recommendation') {
+        const { error: deleteError } = await supabase
+          .from('solar_panels')
+          .delete()
+          .eq('id', (flagData as any).panel_id);
+
+        if (deleteError) {
+          console.error('Failed to delete panel:', deleteError);
+          toast.error('Flag approved but failed to delete panel. Please delete manually.');
+        } else {
+          toast.success('Flag approved and panel deleted successfully');
+        }
+      } else {
+        toast.success(`Flag ${action === 'approve' ? 'approved' : 'rejected'} successfully`);
+      }
       
-      toast.success(`Flag ${action === 'approve' ? 'approved' : 'rejected'} successfully`);
       setSelectedFlag(null);
       setAdminNote("");
       loadFlags();
@@ -515,8 +550,24 @@ export const FlagQueue = () => {
                         System Flag: Missing Data
                       </Badge>
                     )}
+                    {flag.flag_type === 'deletion_recommendation' && (
+                      <Badge variant="destructive" className="mb-2">
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Deletion Recommendation
+                      </Badge>
+                    )}
                     <div className="text-sm text-muted-foreground">
-                      Missing fields: {flag.flagged_fields?.join(', ')}
+                      {flag.flag_type === 'deletion_recommendation' ? (
+                        <div>
+                          <div className="font-medium">Deletion Reason:</div>
+                          <div>{deletionReasonLabels[flag.deletion_reason || ''] || flag.deletion_reason}</div>
+                          {flag.deletion_reason === 'other' && flag.deletion_other_reason && (
+                            <div className="mt-1 italic">"{flag.deletion_other_reason}"</div>
+                          )}
+                        </div>
+                      ) : (
+                        `Missing fields: ${flag.flagged_fields?.join(', ')}`
+                      )}
                     </div>
                     {flag.web_url && extractASIN(flag.web_url) && (
                       <div className="text-sm">
@@ -540,16 +591,33 @@ export const FlagQueue = () => {
               </CardHeader>
               
               <CardContent className="space-y-4">
-                {/* Flagged Fields */}
+                {/* Flagged Fields or Deletion Reason */}
                 <div>
-                  <Label className="text-sm font-medium">Flagged Fields:</Label>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {flag.flagged_fields.map((field) => (
-                      <Badge key={field} variant="outline">
-                        {fieldLabels[field] || field}
-                      </Badge>
-                    ))}
-                  </div>
+                  <Label className="text-sm font-medium">
+                    {flag.flag_type === 'deletion_recommendation' ? 'Deletion Recommendation:' : 'Flagged Fields:'}
+                  </Label>
+                  {flag.flag_type === 'deletion_recommendation' ? (
+                    <div className="mt-1 space-y-2">
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="font-medium text-red-800">
+                          {deletionReasonLabels[flag.deletion_reason || ''] || flag.deletion_reason}
+                        </div>
+                        {flag.deletion_reason === 'other' && flag.deletion_other_reason && (
+                          <div className="mt-1 text-sm text-red-700 italic">
+                            "{flag.deletion_other_reason}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {flag.flagged_fields.map((field) => (
+                        <Badge key={field} variant="outline">
+                          {fieldLabels[field] || field}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Suggested Corrections */}
