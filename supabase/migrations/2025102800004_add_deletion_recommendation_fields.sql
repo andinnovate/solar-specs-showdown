@@ -19,7 +19,9 @@ COMMENT ON COLUMN user_flags.deletion_reason IS 'Reason for deletion recommendat
 COMMENT ON COLUMN user_flags.deletion_other_reason IS 'Additional details when deletion_reason is "other"';
 
 -- Update admin_flag_queue view to include new fields
-CREATE OR REPLACE VIEW admin_flag_queue AS
+DROP VIEW IF EXISTS admin_flag_queue;
+
+CREATE VIEW admin_flag_queue AS
 SELECT 
   uf.id,
   uf.panel_id,
@@ -34,14 +36,14 @@ SELECT
   uf.updated_at,
   uf.resolved_at,
   uf.resolved_by,
-  uf.deletion_reason,
-  uf.deletion_other_reason,
   sp.name as panel_name,
   sp.manufacturer,
   sp.wattage,
   sp.price_usd,
   au.email as user_email,
-  resolver.email as resolved_by_email
+  resolver.email as resolved_by_email,
+  uf.deletion_reason,
+  uf.deletion_other_reason
 FROM user_flags uf
 JOIN solar_panels sp ON uf.panel_id = sp.id
 LEFT JOIN auth.users au ON uf.user_id = au.id
