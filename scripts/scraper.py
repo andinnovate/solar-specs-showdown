@@ -366,17 +366,26 @@ class ScraperAPIParser:
             # We'll store them but they should be interpreted carefully
             
             # OPTIONAL: Price
-            price_str = api_response.get('pricing', '')
-            price_usd = UnitConverter.parse_price_string(price_str)
-            if not price_usd:
-                parsing_failures.append(f"Failed to parse price: '{price_str}'")
-                missing_fields.append('price')
-                # Enhanced error logging with relevant fields for debugging
-                logger.error(f"Failed to parse price: '{price_str}'")
-                logger.error(f"ASIN: {asin}, Name: {name}, Manufacturer: {manufacturer}")
-                logger.error(f"Available pricing data: {api_response.get('pricing', 'N/A')}")
-                logger.error(f"Product info keys: {list(product_info.keys()) if product_info else 'None'}")
-                price_usd = None
+            # Check if product is unavailable
+            availability_status = api_response.get('availability_status', '').lower()
+            is_unavailable = 'unavailable' in availability_status or 'out of stock' in availability_status
+            
+            if is_unavailable:
+                # Set price to 0 to indicate unavailable status
+                price_usd = 0
+                logger.info(f"Product unavailable (ASIN: {asin}): Setting price to 0")
+            else:
+                price_str = api_response.get('pricing', '')
+                price_usd = UnitConverter.parse_price_string(price_str)
+                if not price_usd:
+                    parsing_failures.append(f"Failed to parse price: '{price_str}'")
+                    missing_fields.append('price')
+                    # Enhanced error logging with relevant fields for debugging
+                    logger.error(f"Failed to parse price: '{price_str}'")
+                    logger.error(f"ASIN: {asin}, Name: {name}, Manufacturer: {manufacturer}")
+                    logger.error(f"Available pricing data: {api_response.get('pricing', 'N/A')}")
+                    logger.error(f"Product info keys: {list(product_info.keys()) if product_info else 'None'}")
+                    price_usd = None
             
             # Optional fields
             description = api_response.get('full_description', '')[:1000] if api_response.get('full_description') else None

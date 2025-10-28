@@ -77,7 +77,7 @@ export const SolarPanelCard = ({
   
   // Calculate price per watt using total wattage (wattage × piece_count)
   const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
-  const pricePerWatt = totalWattage && panel.price_usd ? (panel.price_usd / totalWattage).toFixed(2) : null;
+  const pricePerWatt = totalWattage && panel.price_usd && panel.price_usd > 0 ? (panel.price_usd / totalWattage).toFixed(2) : null;
   const wattsPerKg = panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null;
   const areaM2 = panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null;
   const wattsPerSqM = panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null;
@@ -319,7 +319,11 @@ export const SolarPanelCard = ({
 
         <div className="pt-2 border-t">
           <div className="flex justify-between items-center">
-            {panel.price_usd ? (
+            {panel.price_usd === 0 ? (
+              <span className="text-lg text-orange-600 font-medium">
+                Currently Unavailable
+              </span>
+            ) : panel.price_usd ? (
               <span className="text-2xl font-bold text-primary">
                 ${panel.price_usd.toFixed(2)}
               </span>

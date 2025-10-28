@@ -312,7 +312,7 @@ const Index = () => {
       
       return (panel.wattage === null || (panel.wattage >= filters.wattageRange[0] && panel.wattage <= filters.wattageRange[1])) &&
         (panel.voltage === null || (panel.voltage >= filters.voltageRange[0] && panel.voltage <= filters.voltageRange[1])) &&
-        (panel.price_usd === null || (panel.price_usd >= filters.priceRange[0] && panel.price_usd <= filters.priceRange[1])) &&
+        (panel.price_usd === null || panel.price_usd === 0 || (panel.price_usd >= filters.priceRange[0] && panel.price_usd <= filters.priceRange[1])) &&
         (panel.weight_kg === null || (panel.weight_kg >= filters.weightRange[0] && panel.weight_kg <= filters.weightRange[1])) &&
         (panel.length_cm === null || (panel.length_cm >= filters.lengthRange[0] && panel.length_cm <= filters.lengthRange[1])) &&
         (panel.width_cm === null || (panel.width_cm >= filters.widthRange[0] && panel.width_cm <= filters.widthRange[1])) &&

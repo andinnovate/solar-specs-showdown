@@ -172,7 +172,13 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                   onMouseEnter={() => onPanelHover?.(panel.id)}
                   onMouseLeave={() => onPanelHover?.(null)}
                 >
-                  {panel.price_usd ? `$${panel.price_usd.toFixed(2)}` : <span className="text-muted-foreground">N/A</span>}
+                  {panel.price_usd === 0 ? (
+                    <span className="text-orange-600">Unavailable</span>
+                  ) : panel.price_usd ? (
+                    `$${panel.price_usd.toFixed(2)}`
+                  ) : (
+                    <span className="text-muted-foreground">N/A</span>
+                  )}
                 </TableCell>
               ))}
             </TableRow>
