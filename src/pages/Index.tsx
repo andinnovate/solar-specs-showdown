@@ -14,29 +14,13 @@ import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
 import { UnitSystem, formatDimensions, formatWeight } from "@/lib/unitConversions";
 import { isAdminUser } from "@/lib/adminUtils";
+import { Tables } from "@/integrations/supabase/types";
 
-interface SolarPanel {
-  id: string;
-  asin: string;
-  name: string;
-  manufacturer: string;
-  length_cm: number | null;  // Now nullable
-  width_cm: number | null;   // Now nullable
-  weight_kg: number | null;  // Now nullable
-  wattage: number | null;    // Now nullable
-  voltage: number | null;
-  price_usd: number | null;  // Now nullable
-  description: string | null;
-  image_url: string | null;
-  web_url: string | null;
-  piece_count: number;       // Number of pieces in the set
-  missing_fields?: string[];  // NEW
+type SolarPanel = Tables<"solar_panels"> & {
+  user_verified_overrides?: string[] | null;
   flag_count?: number;
-  user_verified_overrides?: string[];
   pending_flags?: number;
-  created_at: string;
-  updated_at: string;
-}
+};
 
 type ViewMode = 'cards' | 'list';
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'wattage-asc' | 'wattage-desc' | 'efficiency-asc' | 'efficiency-desc' | 'value-asc' | 'value-desc';
@@ -179,7 +163,10 @@ const Index = () => {
       const transformedData = (data || []).map(panel => ({
         ...panel,
         piece_count: panel.piece_count ?? 1,
-        missing_fields: panel.missing_fields as string[] | undefined
+        missing_fields: panel.missing_fields as string[] | null,
+        user_verified_overrides: (panel as any).user_verified_overrides as string[] | null,
+        flag_count: (panel as any).flag_count ?? 0,
+        pending_flags: (panel as any).pending_flags ?? 0
       }));
       setPanels(transformedData);
       
@@ -299,8 +286,20 @@ const Index = () => {
       }
 
       // Filter for incomplete panels if disabled
-      if (!filters.showIncomplete && panel.missing_fields && panel.missing_fields.length > 0) {
-        return false;
+      const missingFields = panel.missing_fields as string[] | null;
+      if (!filters.showIncomplete && missingFields && missingFields.length > 0) {
+        // Check if all missing fields are in user_verified_overrides
+        const verifiedOverrides = panel.user_verified_overrides as string[] | null;
+        if (verifiedOverrides && verifiedOverrides.length > 0) {
+          const unverifiedMissingFields = missingFields.filter(
+            field => !verifiedOverrides.includes(field)
+          );
+          if (unverifiedMissingFields.length > 0) {
+            return false;
+          }
+        } else {
+          return false;
+        }
       }
 
       // Calculate metrics only if values exist

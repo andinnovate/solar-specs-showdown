@@ -4,21 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Ruler, Zap, Layers, Layout } from "lucide-react";
 import { UnitSystem, formatDimensions, formatArea } from "@/lib/unitConversions";
+import { Tables } from "@/integrations/supabase/types";
 
-interface SolarPanel {
-  id: string;
-  asin: string;
-  name: string;
-  manufacturer: string;
-  length_cm: number | null;  // Now nullable
-  width_cm: number | null;   // Now nullable
-  weight_kg: number | null;  // Now nullable
-  wattage: number | null;    // Now nullable
-  voltage: number | null;
-  price_usd: number | null;  // Now nullable
-  web_url?: string | null;
-  missing_fields?: string[];  // NEW
-}
+type SolarPanel = Tables<"solar_panels"> & {
+  user_verified_overrides?: string[] | null;
+  flag_count?: number;
+  pending_flags?: number;
+};
 
 interface VisualComparisonProps {
   panels: SolarPanel[];
@@ -200,6 +192,11 @@ export const VisualComparison = ({ panels, unitSystem, onPanelHover, hoveredPane
 
   if (panels.length === 0) {
     return null;
+  }
+
+  // Handle case where visualData is a JSX element (no valid dimensions)
+  if (typeof visualData !== 'object' || !('panels' in visualData)) {
+    return visualData as React.ReactElement;
   }
 
   return (

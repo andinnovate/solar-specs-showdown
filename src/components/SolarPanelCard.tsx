@@ -7,29 +7,13 @@ import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWit
 import { FlagIcon } from "@/components/FlagIcon";
 import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
 import { useState, useEffect } from "react";
+import { Tables } from "@/integrations/supabase/types";
 
-interface SolarPanel {
-  id: string;
-  asin: string;
-  name: string;
-  manufacturer: string;
-  length_cm: number | null;  // Now nullable
-  width_cm: number | null;   // Now nullable
-  weight_kg: number | null;  // Now nullable
-  wattage: number | null;    // Now nullable
-  voltage: number | null;
-  price_usd: number | null;  // Now nullable
-  description: string | null;
-  image_url: string | null;
-  web_url: string | null;
-  piece_count: number;       // Number of pieces in the set
-  missing_fields?: string[];  // NEW
+type SolarPanel = Tables<"solar_panels"> & {
+  user_verified_overrides?: string[] | null;
   flag_count?: number;
-  user_verified_overrides?: string[];
   pending_flags?: number;
-  created_at: string;
-  updated_at: string;
-}
+};
 
 interface SolarPanelCardProps {
   panel: SolarPanel;
@@ -61,10 +45,42 @@ export const SolarPanelCard = ({
 
   // Helper functions for missing data
   const hasMissingData = (panel: SolarPanel): boolean => {
-    return panel.missing_fields && panel.missing_fields.length > 0;
+    const missingFields = panel.missing_fields as string[] | null;
+    if (!missingFields || missingFields.length === 0) {
+      return false;
+    }
+    
+    // If user_verified_overrides exists, exclude those fields from missing data check
+    const verifiedOverrides = panel.user_verified_overrides as string[] | null;
+    if (verifiedOverrides && verifiedOverrides.length > 0) {
+      const unverifiedMissingFields = missingFields.filter(
+        field => !verifiedOverrides.includes(field)
+      );
+      return unverifiedMissingFields.length > 0;
+    }
+    
+    return true;
   };
 
-  const getMissingFieldsDisplay = (fields: string[]): string => {
+  const getMissingFieldsDisplay = (panel: SolarPanel): string => {
+    const missingFields = panel.missing_fields as string[] | null;
+    if (!missingFields || missingFields.length === 0) {
+      return '';
+    }
+    
+    // Filter out fields that are in user_verified_overrides
+    let fieldsToShow = missingFields;
+    const verifiedOverrides = panel.user_verified_overrides as string[] | null;
+    if (verifiedOverrides && verifiedOverrides.length > 0) {
+      fieldsToShow = missingFields.filter(
+        field => !verifiedOverrides.includes(field)
+      );
+    }
+    
+    if (fieldsToShow.length === 0) {
+      return '';
+    }
+    
     const fieldMap: Record<string, string> = {
       'wattage': 'Power rating',
       'dimensions': 'Dimensions',
@@ -72,7 +88,7 @@ export const SolarPanelCard = ({
       'voltage': 'Voltage',
       'price': 'Price'
     };
-    return fields.map(f => fieldMap[f] || f).join(', ');
+    return fieldsToShow.map(f => fieldMap[f] || f).join(', ');
   };
   
   // Calculate price per watt using total wattage (wattage × piece_count)
@@ -376,7 +392,7 @@ export const SolarPanelCard = ({
             console.log('Current user:', user.id, user.email);
 
             // Submit flag to database
-            const { data, error } = await supabase
+            const { data, error } = await (supabase as any)
               .from('user_flags')
               .insert({
                 panel_id: panel.id,
