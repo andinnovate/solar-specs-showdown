@@ -7,7 +7,6 @@ import pytest
 from unittest.mock import Mock, patch
 from scripts.scraper import ScraperAPIParser
 from scripts.ingest_staged_asins import create_admin_review_flag
-from scripts.database import DatabaseManager
 
 
 class TestOptionalSpecsParsing:
@@ -206,8 +205,9 @@ class TestWattageFilteringWithNulls:
 class TestAdminFlagCreation:
     """Test automatic admin flag creation for missing data."""
     
+    @pytest.mark.asyncio
     @patch('scripts.ingest_staged_asins.create_client')
-    def test_create_admin_review_flag_success(self, mock_create_client):
+    async def test_create_admin_review_flag_success(self, mock_create_client):
         """Test successful creation of admin review flag."""
         mock_client = Mock()
         mock_create_client.return_value = mock_client
@@ -239,8 +239,9 @@ class TestAdminFlagCreation:
         assert 'Missing or failed to parse: wattage, dimensions' in insert_call['user_comment']
         assert insert_call['status'] == 'pending'
     
+    @pytest.mark.asyncio
     @patch('scripts.ingest_staged_asins.create_client')
-    def test_create_admin_review_flag_failure(self, mock_create_client):
+    async def test_create_admin_review_flag_failure(self, mock_create_client):
         """Test handling of admin flag creation failure."""
         mock_client = Mock()
         mock_create_client.return_value = mock_client
@@ -268,17 +269,40 @@ class TestAdminFlagCreation:
 class TestDatabaseHandling:
     """Test database operations with nullable fields."""
     
+    @pytest.mark.asyncio
     @patch('scripts.database.create_client')
-    def test_add_new_panel_with_missing_fields(self, mock_create_client):
+    async def test_add_new_panel_with_missing_fields(self, mock_create_client):
         """Test adding panel with missing fields."""
+        # Setup mock for solar_panels table insert
+        mock_solar_panels_table = Mock()
+        mock_insert = Mock()
+        mock_execute = Mock()
+        mock_execute.return_value.data = [{'id': 'panel-123'}]
+        mock_insert.execute = mock_execute
+        mock_solar_panels_table.insert.return_value = mock_insert
+        
+        # Setup mock for script_logs table insert (for logging)
+        mock_script_logs_table = Mock()
+        mock_script_logs_insert = Mock()
+        mock_script_logs_execute = Mock()
+        mock_script_logs_execute.return_value.data = [{'id': 'log-123'}]
+        mock_script_logs_insert.execute = mock_script_logs_execute
+        mock_script_logs_table.insert.return_value = mock_script_logs_insert
+        
+        # Make table() return different mocks based on argument
         mock_client = Mock()
+        def table_side_effect(table_name):
+            if table_name == 'solar_panels':
+                return mock_solar_panels_table
+            elif table_name == 'script_logs':
+                return mock_script_logs_table
+            return Mock()
+        
+        mock_client.table.side_effect = table_side_effect
         mock_create_client.return_value = mock_client
         
-        mock_client.table.return_value.insert.return_value.execute.return_value.data = [
-            {'id': 'panel-123'}
-        ]
-        
-        db = DatabaseManager()
+        from scripts.database import SolarPanelDB
+        db = SolarPanelDB()
         
         panel_data = {
             'asin': 'B0TEST123',
@@ -300,8 +324,10 @@ class TestDatabaseHandling:
         
         assert result == 'panel-123'
         
-        # Verify the insert data
-        insert_call = mock_client.table.return_value.insert.call_args[0][0]
+        # Verify the insert data - insert() is called on table() with data dict as positional arg
+        mock_solar_panels_table.insert.assert_called_once()
+        assert mock_solar_panels_table.insert.call_args is not None
+        insert_call = mock_solar_panels_table.insert.call_args[0][0]
         assert insert_call['asin'] == 'B0TEST123'
         assert insert_call['name'] == 'Test Panel'
         assert insert_call['manufacturer'] == 'TestBrand'
@@ -312,6 +338,9 @@ class TestDatabaseHandling:
         assert insert_call['voltage'] == 24
         assert insert_call['price_usd'] is None
         assert insert_call['missing_fields'] == ['dimensions', 'wattage', 'price']
+        
+        # Verify table was called correctly
+        assert mock_client.table.call_count >= 2  # solar_panels + script_logs
 
 
 class TestFilteringLogic:
