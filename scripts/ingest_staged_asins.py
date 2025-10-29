@@ -22,6 +22,10 @@ from scripts.config import config
 from supabase import create_client
 import json
 
+# Configuration: How long (in hours) raw scraper data remains valid for reuse
+# This prevents redundant API calls by reusing recently fetched data
+RAW_DATA_VALIDITY_HOURS = 72
+
 
 async def save_raw_scraper_data(asin: str, panel_id: Optional[str], raw_response: dict, metadata: dict, logger):
     """
@@ -172,7 +176,7 @@ async def create_admin_review_flag(asin: str, panel_id: str, missing_fields: lis
         return None
 
 
-async def check_recent_raw_data(asin: str, hours_threshold: int = 24) -> Optional[Dict]:
+async def check_recent_raw_data(asin: str, hours_threshold: int = RAW_DATA_VALIDITY_HOURS) -> Optional[Dict]:
     """
     Check if we have recent raw response data for an ASIN.
     
@@ -252,13 +256,13 @@ async def ingest_single_asin(
         
         # Check for recent raw data before making API calls
         logger.log_script_event("INFO", f"Checking for recent raw data for ASIN: {asin}")
-        recent_raw_data = await check_recent_raw_data(asin, hours_threshold=24)
+        recent_raw_data = await check_recent_raw_data(asin, hours_threshold=RAW_DATA_VALIDITY_HOURS)
         
         if recent_raw_data:
             # Use existing raw data instead of making API call
             logger.log_script_event(
                 "INFO", 
-                f"Using existing raw data for ASIN {asin} (saved within 24 hours). Skipping API call."
+                f"Using existing raw data for ASIN {asin} (saved within {RAW_DATA_VALIDITY_HOURS} hours). Skipping API call."
             )
             
             # Reconstruct the product_data format from stored raw data
