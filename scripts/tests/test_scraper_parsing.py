@@ -195,10 +195,14 @@ class TestProductParsing:
         assert parsed is None
     
     def test_parse_product_data_missing_dimensions(self, sample_product_data):
-        """Test that parsing fails when dimensions are missing"""
+        """Test that parsing succeeds with missing dimensions (optional specs behavior)"""
         sample_product_data['product_information']['Product Dimensions'] = ''
         parsed = ScraperAPIParser.parse_product_data(sample_product_data)
-        assert parsed is None
+        # With optional specs, parsing should succeed even with missing dimensions
+        assert parsed is not None
+        assert parsed['length_cm'] is None
+        assert parsed['width_cm'] is None
+        assert 'dimensions' in parsed.get('missing_fields', [])
 
 
 @pytest.mark.parametrize("input_str,expected", [

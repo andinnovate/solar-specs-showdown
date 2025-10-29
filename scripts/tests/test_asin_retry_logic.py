@@ -54,9 +54,19 @@ class TestASINRetryLogic:
         return logger
     
     @pytest.mark.asyncio
-    async def test_permanent_failure_parsing_error(self, mock_asin_manager, mock_scraper, 
+    @patch('scripts.ingest_staged_asins.check_recent_raw_data')
+    @patch('scripts.ingest_staged_asins.create_client')
+    async def test_permanent_failure_parsing_error(self, mock_create_client, mock_check_recent, mock_asin_manager, mock_scraper, 
                                                    mock_db, mock_retry_handler, mock_logger):
         """Test that parsing failures are marked as permanent failures."""
+        # Setup: Mock filtered_asins check to return empty
+        mock_client = MagicMock()
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_create_client.return_value = mock_client
+        
+        # Setup: No recent raw data (bypass cache)
+        mock_check_recent.return_value = None
+        
         # Setup: Scraper returns None (parsing failure)
         mock_retry_handler.execute_with_retry = AsyncMock(return_value=None)
         
@@ -81,9 +91,19 @@ class TestASINRetryLogic:
         assert call_args[1]["is_permanent"] is True  # permanent flag
     
     @pytest.mark.asyncio
-    async def test_temporary_failure_network_error(self, mock_asin_manager, mock_scraper, 
+    @patch('scripts.ingest_staged_asins.check_recent_raw_data')
+    @patch('scripts.ingest_staged_asins.create_client')
+    async def test_temporary_failure_network_error(self, mock_create_client, mock_check_recent, mock_asin_manager, mock_scraper, 
                                                    mock_db, mock_retry_handler, mock_logger):
         """Test that network errors are marked as temporary failures."""
+        # Setup: Mock filtered_asins check to return empty
+        mock_client = MagicMock()
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_create_client.return_value = mock_client
+        
+        # Setup: No recent raw data (bypass cache)
+        mock_check_recent.return_value = None
+        
         # Setup: Network exception during fetch
         mock_retry_handler.execute_with_retry = AsyncMock(
             side_effect=Exception("Network timeout")
@@ -110,16 +130,26 @@ class TestASINRetryLogic:
         assert call_args[1]["is_permanent"] is True  # permanent flag
     
     @pytest.mark.asyncio
-    async def test_successful_processing(self, mock_asin_manager, mock_scraper, 
+    @patch('scripts.ingest_staged_asins.check_recent_raw_data')
+    @patch('scripts.ingest_staged_asins.create_client')
+    async def test_successful_processing(self, mock_create_client, mock_check_recent, mock_asin_manager, mock_scraper, 
                                         mock_db, mock_retry_handler, mock_logger):
         """Test successful ASIN processing."""
+        # Setup: Mock filtered_asins check to return empty
+        mock_client = MagicMock()
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_create_client.return_value = mock_client
+        
+        # Setup: No recent raw data (bypass cache)
+        mock_check_recent.return_value = None
+        
         # Setup: No existing panel, valid product data
         mock_db.get_panel_by_asin = AsyncMock(return_value=None)  # No existing panel
         product_data = {
             'parsed_data': {
                 'name': 'Test Solar Panel',
                 'manufacturer': 'Test Corp',
-                'wattage': 400,
+                'wattage': 400,  # Above 30W threshold
                 'price_usd': 299.99,
                 'length_cm': 200.0,
                 'width_cm': 100.0,
@@ -147,9 +177,19 @@ class TestASINRetryLogic:
         mock_db.add_new_panel.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_duplicate_asin_skips_api_call(self, mock_asin_manager, mock_scraper, 
+    @patch('scripts.ingest_staged_asins.check_recent_raw_data')
+    @patch('scripts.ingest_staged_asins.create_client')
+    async def test_duplicate_asin_skips_api_call(self, mock_create_client, mock_check_recent, mock_asin_manager, mock_scraper, 
                                                 mock_db, mock_retry_handler, mock_logger):
         """Test that duplicate ASINs skip API calls to save credits."""
+        # Setup: Mock filtered_asins check to return empty
+        mock_client = MagicMock()
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_create_client.return_value = mock_client
+        
+        # Setup: No recent raw data (bypass cache)
+        mock_check_recent.return_value = None
+        
         # Setup: Existing panel found
         mock_db.get_panel_by_asin = AsyncMock(return_value={"id": "existing-panel"})
         

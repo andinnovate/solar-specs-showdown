@@ -94,9 +94,19 @@ class Test403ErrorHandling:
                 scraper.search_amazon("solar panel")
     
     @pytest.mark.asyncio
-    async def test_ingest_403_error_handling(self, mock_asin_manager, mock_db, 
+    @patch('scripts.ingest_staged_asins.check_recent_raw_data')
+    @patch('scripts.ingest_staged_asins.create_client')
+    async def test_ingest_403_error_handling(self, mock_create_client, mock_check_recent, mock_asin_manager, mock_db, 
                                              mock_retry_handler, mock_logger):
         """Test that ingest script handles 403 errors without marking ASIN as failed."""
+        # Setup: Mock filtered_asins check to return empty
+        mock_client = MagicMock()
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_create_client.return_value = mock_client
+        
+        # Setup: No recent raw data (bypass cache)
+        mock_check_recent.return_value = None
+        
         # Setup: Mock retry handler to raise 403 error
         mock_retry_handler.execute_with_retry = AsyncMock(
             side_effect=ScraperAPIForbiddenError("ScraperAPI 403 Forbidden: API key invalid")
