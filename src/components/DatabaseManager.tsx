@@ -15,7 +15,7 @@ import {
   DialogTitle, 
   DialogFooter 
 } from "@/components/ui/dialog";
-import { Trash2, Edit2, Save, X, Lock, AlertCircle, Search, ArrowLeftRight } from "lucide-react";
+import { Trash2, Edit2, Save, X, Lock, AlertCircle, Search, ArrowLeftRight, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 
 type SolarPanel = Tables<"solar_panels">;
@@ -25,9 +25,23 @@ type SolarPanelWithOverrides = SolarPanel & {
   manual_overrides?: string[];
 };
 
+// Minimal panel type for list view
+type MinimalPanel = {
+  id: string;
+  name: string;
+  asin: string;
+  manufacturer: string | null;
+  web_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export const DatabaseManager = () => {
-  const [panels, setPanels] = useState<SolarPanelWithOverrides[]>([]);
-  const [filteredPanels, setFilteredPanels] = useState<SolarPanelWithOverrides[]>([]);
+  const [panels, setPanels] = useState<MinimalPanel[]>([]);
+  const [filteredPanels, setFilteredPanels] = useState<MinimalPanel[]>([]);
+  const [fullPanelData, setFullPanelData] = useState<Record<string, SolarPanelWithOverrides>>({});
+  const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
+  const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedPanel, setEditedPanel] = useState<Partial<SolarPanelWithOverrides>>({});
@@ -49,8 +63,8 @@ export const DatabaseManager = () => {
         panels.filter((panel) => {
           return (
             panel.name.toLowerCase().includes(term) ||
-            panel.manufacturer.toLowerCase().includes(term) ||
-            (panel.wattage && panel.wattage.toString().includes(term)) ||
+            panel.asin.toLowerCase().includes(term) ||
+            (panel.manufacturer && panel.manufacturer.toLowerCase().includes(term)) ||
             (panel.web_url && panel.web_url.toLowerCase().includes(term))
           );
         })
@@ -63,13 +77,12 @@ export const DatabaseManager = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from("solar_panels")
-        .select("*")
-        .order("manufacturer", { ascending: true })
+        .select("id, name, asin, manufacturer, web_url, created_at, updated_at")
         .order("name", { ascending: true });
 
       if (error) throw error;
-      setPanels(data || []);
-      setFilteredPanels(data || []);
+      setPanels((data || []) as MinimalPanel[]);
+      setFilteredPanels((data || []) as MinimalPanel[]);
     } catch (error) {
       console.error("Error loading panels:", error);
       toast.error("Failed to load panels");
@@ -78,7 +91,68 @@ export const DatabaseManager = () => {
     }
   };
 
-  const startEdit = (panel: SolarPanelWithOverrides) => {
+  const loadPanelDetails = async (panelId: string) => {
+    // If already loaded, don't fetch again
+    if (fullPanelData[panelId]) {
+      return;
+    }
+
+    try {
+      setLoadingDetails(prev => new Set(prev).add(panelId));
+      
+      const { data, error } = await supabase
+        .from("solar_panels")
+        .select("*")
+        .eq("id", panelId)
+        .single();
+
+      if (error) throw error;
+      
+      if (data) {
+        setFullPanelData(prev => ({
+          ...prev,
+          [panelId]: data as SolarPanelWithOverrides
+        }));
+      }
+    } catch (error) {
+      console.error("Error loading panel details:", error);
+      toast.error("Failed to load panel details");
+    } finally {
+      setLoadingDetails(prev => {
+        const next = new Set(prev);
+        next.delete(panelId);
+        return next;
+      });
+    }
+  };
+
+  const togglePanelExpansion = async (panelId: string) => {
+    if (expandedPanels.has(panelId)) {
+      // Collapse
+      setExpandedPanels(prev => {
+        const next = new Set(prev);
+        next.delete(panelId);
+        return next;
+      });
+    } else {
+      // Expand - load details if not already loaded
+      setExpandedPanels(prev => new Set(prev).add(panelId));
+      await loadPanelDetails(panelId);
+    }
+  };
+
+  const startEdit = async (panelId: string) => {
+    // Load full panel data if not already loaded
+    if (!fullPanelData[panelId]) {
+      await loadPanelDetails(panelId);
+    }
+    
+    const panel = fullPanelData[panelId];
+    if (!panel) {
+      toast.error("Failed to load panel data for editing");
+      return;
+    }
+    
     setEditingId(panel.id);
     setEditedPanel({ ...panel });
     setOriginalPanel({ ...panel });
@@ -261,6 +335,22 @@ export const DatabaseManager = () => {
       // Check and auto-approve flags if missing data is resolved (after update is complete)
       await checkAndResolveFlags(editingId);
 
+      // Update full panel data cache if it exists
+      if (fullPanelData[editingId]) {
+        const { data: updatedPanel } = await supabase
+          .from("solar_panels")
+          .select("*")
+          .eq("id", editingId)
+          .single();
+        
+        if (updatedPanel) {
+          setFullPanelData(prev => ({
+            ...prev,
+            [editingId]: updatedPanel as SolarPanelWithOverrides
+          }));
+        }
+      }
+
       if (changedFields.length > 0) {
         toast.success(`Panel updated. ${changedFields.length} field(s) marked as manually edited.`);
       } else {
@@ -270,7 +360,8 @@ export const DatabaseManager = () => {
       setEditingId(null);
       setEditedPanel({});
       setOriginalPanel({});
-      loadPanels();
+      // Reload minimal panel list to get updated timestamps
+      await loadPanels();
     } catch (error) {
       console.error("Error updating panel:", error);
       toast.error("Failed to update panel");
@@ -367,7 +458,7 @@ export const DatabaseManager = () => {
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by name, manufacturer, wattage, or ASIN..."
+            placeholder="Search by name or ASIN..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -399,17 +490,21 @@ export const DatabaseManager = () => {
           </Card>
         ) : (
           filteredPanels.map((panel) => {
+            const isExpanded = expandedPanels.has(panel.id);
             const isEditing = editingId === panel.id;
-            const currentPanel = isEditing ? editedPanel : panel;
+            const fullPanel = fullPanelData[panel.id];
+            const isLoadingDetails = loadingDetails.has(panel.id);
+            const currentPanel = isEditing ? editedPanel : (fullPanel || panel);
+            const displayPanel = fullPanel || panel;
 
-            const manualOverrides = panel.manual_overrides || [];
+            const manualOverrides = (displayPanel as SolarPanelWithOverrides).manual_overrides || [];
             const hasManualOverride = (field: string) => manualOverrides.includes(field);
 
             const swapLengthWidth = () => {
               if (!isEditing) return;
               
-              const currentLength = currentPanel.length_cm;
-              const currentWidth = currentPanel.width_cm;
+              const currentLength = (currentPanel as any).length_cm;
+              const currentWidth = (currentPanel as any).width_cm;
               
               setEditedPanel({
                 ...editedPanel,
@@ -420,52 +515,131 @@ export const DatabaseManager = () => {
 
             return (
               <Card key={panel.id} className={isEditing ? "border-primary" : ""}>
-                <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Left column - Basic info */}
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label className="flex items-center gap-2">
-                          Name
-                          {hasManualOverride('name') && (
-                            <span title="Manually edited - protected from scraper updates">
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </span>
-                          )}
-                        </Label>
-                        {isEditing ? (
-                          <Input
-                            value={currentPanel.name || ""}
-                            onChange={(e) =>
-                              setEditedPanel({ ...editedPanel, name: e.target.value })
-                            }
-                          />
-                        ) : (
-                          <p className="text-sm font-medium">{panel.name}</p>
-                        )}
+                <CardContent className="pt-4">
+                  {/* Compact view header */}
+                  <div className="flex items-center justify-between mb-4 pb-4 border-b">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{panel.name}</p>
+                          <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap">
+                            <span className="font-mono">{panel.asin}</span>
+                            {panel.web_url && (
+                              <a
+                                href={panel.web_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline truncate max-w-xs"
+                              >
+                                {panel.web_url}
+                              </a>
+                            )}
+                            {panel.manufacturer && (
+                              <span>{panel.manufacturer}</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                        <span>Created: {new Date(panel.created_at).toLocaleDateString()}</span>
+                        <span>Updated: {new Date(panel.updated_at).toLocaleDateString()}</span>
+                        <span className="font-mono">ID: {panel.id}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => togglePanelExpansion(panel.id)}
+                        disabled={isLoadingDetails}
+                      >
+                        {isExpanded ? (
+                          <>
+                            <ChevronUp className="w-4 h-4 mr-1" />
+                            Collapse
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-4 h-4 mr-1" />
+                            View Details
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setDeleteConfirm(panel.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => startEdit(panel.id)}
+                      >
+                        <Edit2 className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label className="flex items-center gap-2">
-                          ASIN
-                          {hasManualOverride('asin') && (
-                            <span title="Manually edited - protected from scraper updates">
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </span>
-                          )}
-                        </Label>
-                        {isEditing ? (
-                          <Input
-                            value={currentPanel.asin || ""}
-                            onChange={(e) =>
-                              setEditedPanel({ ...editedPanel, asin: e.target.value })
-                            }
-                            placeholder="B0ABCD1234"
-                          />
-                        ) : (
-                          <p className="text-sm font-mono">{panel.asin}</p>
-                        )}
-                      </div>
+                  {/* Expanded details view */}
+                  {isExpanded && (
+                    <>
+                      {isLoadingDetails ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                            <p className="text-sm text-muted-foreground">Loading details...</p>
+                          </div>
+                        </div>
+                      ) : fullPanel ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          {/* Left column - Basic info */}
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label className="flex items-center gap-2">
+                                Name
+                                {hasManualOverride('name') && (
+                                  <span title="Manually edited - protected from scraper updates">
+                                    <Lock className="h-3 w-3 text-amber-600" />
+                                  </span>
+                                )}
+                              </Label>
+                              {isEditing ? (
+                                <Input
+                                  value={currentPanel.name || ""}
+                                  onChange={(e) =>
+                                    setEditedPanel({ ...editedPanel, name: e.target.value })
+                                  }
+                                />
+                              ) : (
+                                <p className="text-sm font-medium">{displayPanel.name}</p>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label className="flex items-center gap-2">
+                                ASIN
+                                {hasManualOverride('asin') && (
+                                  <span title="Manually edited - protected from scraper updates">
+                                    <Lock className="h-3 w-3 text-amber-600" />
+                                  </span>
+                                )}
+                              </Label>
+                              {isEditing ? (
+                                <Input
+                                  value={currentPanel.asin || ""}
+                                  onChange={(e) =>
+                                    setEditedPanel({ ...editedPanel, asin: e.target.value })
+                                  }
+                                  placeholder="B0ABCD1234"
+                                />
+                              ) : (
+                                <p className="text-sm font-mono">{displayPanel.asin}</p>
+                              )}
+                            </div>
 
                       <div className="space-y-2">
                         <Label className="flex items-center gap-2">
@@ -478,30 +652,30 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={currentPanel.manufacturer || ""}
+                            value={(currentPanel as any).manufacturer || ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, manufacturer: e.target.value })
                             }
                           />
                         ) : (
-                          <p className="text-sm">{panel.manufacturer}</p>
+                          <p className="text-sm">{(displayPanel as any).manufacturer}</p>
                         )}
-                      </div>
+                            </div>
 
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label className="flex items-center gap-2">
-                            Wattage
-                            {hasManualOverride('wattage') && (
-                              <span title="Manually edited - protected from scraper updates">
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </span>
-                            )}
-                          </Label>
-                          {isEditing ? (
-                            <Input
-                              type="number"
-                              value={currentPanel.wattage || ""}
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="space-y-2">
+                                <Label className="flex items-center gap-2">
+                                  Wattage
+                                  {hasManualOverride('wattage') && (
+                                    <span title="Manually edited - protected from scraper updates">
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </span>
+                                  )}
+                                </Label>
+                                {isEditing ? (
+                                  <Input
+                                    type="number"
+                                    value={(currentPanel as any).wattage || ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
@@ -510,7 +684,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.wattage ? `${panel.wattage} W` : 'N/A'}</p>
+                            <p className="text-sm">{(displayPanel as any).wattage ? `${(displayPanel as any).wattage} W` : 'N/A'}</p>
                           )}
                         </div>
                         <div className="space-y-2">
@@ -526,7 +700,7 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={currentPanel.voltage || ""}
+                              value={(currentPanel as any).voltage || ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
@@ -537,7 +711,7 @@ export const DatabaseManager = () => {
                             />
                           ) : (
                             <p className="text-sm">
-                              {panel.voltage ? `${panel.voltage} V` : "Not set"}
+                              {(displayPanel as any).voltage ? `${(displayPanel as any).voltage} V` : "Not set"}
                             </p>
                           )}
                         </div>
@@ -554,7 +728,7 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               min="1"
-                              value={currentPanel.piece_count || 1}
+                              value={(currentPanel as any).piece_count || 1}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
@@ -563,7 +737,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.piece_count || 1} {panel.piece_count === 1 ? 'piece' : 'pieces'}</p>
+                            <p className="text-sm">{(displayPanel as any).piece_count || 1} {((displayPanel as any).piece_count || 1) === 1 ? 'piece' : 'pieces'}</p>
                           )}
                         </div>
                       </div>
@@ -581,7 +755,7 @@ export const DatabaseManager = () => {
                           <Input
                             type="number"
                             step="0.01"
-                            value={currentPanel.price_usd || ""}
+                            value={(currentPanel as any).price_usd || ""}
                             onChange={(e) =>
                               setEditedPanel({
                                 ...editedPanel,
@@ -590,7 +764,7 @@ export const DatabaseManager = () => {
                             }
                           />
                         ) : (
-                          <p className="text-sm">${panel.price_usd ? panel.price_usd.toFixed(2) : 'N/A'}</p>
+                          <p className="text-sm">${(displayPanel as any).price_usd ? (displayPanel as any).price_usd.toFixed(2) : 'N/A'}</p>
                         )}
                       </div>
 
@@ -608,7 +782,7 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={currentPanel.length_cm || ""}
+                              value={(currentPanel as any).length_cm || ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
@@ -617,7 +791,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.length_cm ?? 'N/A'}</p>
+                            <p className="text-sm">{(displayPanel as any).length_cm ?? 'N/A'}</p>
                           )}
                         </div>
                         <div className="space-y-2">
@@ -633,7 +807,7 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={currentPanel.width_cm || ""}
+                              value={(currentPanel as any).width_cm || ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
@@ -642,7 +816,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.width_cm ?? 'N/A'}</p>
+                            <p className="text-sm">{(displayPanel as any).width_cm ?? 'N/A'}</p>
                           )}
                         </div>
                         {isEditing && (
@@ -672,7 +846,7 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={currentPanel.weight_kg || ""}
+                              value={(currentPanel as any).weight_kg || ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
@@ -681,7 +855,7 @@ export const DatabaseManager = () => {
                               }
                             />
                           ) : (
-                            <p className="text-sm">{panel.weight_kg ?? 'N/A'}</p>
+                            <p className="text-sm">{(displayPanel as any).weight_kg ?? 'N/A'}</p>
                           )}
                         </div>
                       </div>
@@ -700,7 +874,7 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={currentPanel.web_url || ""}
+                            value={(currentPanel as any).web_url || ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, web_url: e.target.value })
                             }
@@ -708,9 +882,9 @@ export const DatabaseManager = () => {
                           />
                         ) : (
                           <p className="text-sm text-blue-600 hover:underline truncate">
-                            {panel.web_url ? (
-                              <a href={panel.web_url} target="_blank" rel="noopener noreferrer">
-                                {panel.web_url}
+                            {(displayPanel as any).web_url ? (
+                              <a href={(displayPanel as any).web_url} target="_blank" rel="noopener noreferrer">
+                                {(displayPanel as any).web_url}
                               </a>
                             ) : (
                               <span className="text-muted-foreground">Not set</span>
@@ -730,7 +904,7 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={currentPanel.image_url || ""}
+                            value={(currentPanel as any).image_url || ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, image_url: e.target.value })
                             }
@@ -738,14 +912,14 @@ export const DatabaseManager = () => {
                           />
                         ) : (
                           <p className="text-sm truncate">
-                            {panel.image_url ? (
+                            {(displayPanel as any).image_url ? (
                               <a
-                                href={panel.image_url}
+                                href={(displayPanel as any).image_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-blue-600 hover:underline"
                               >
-                                {panel.image_url}
+                                {(displayPanel as any).image_url}
                               </a>
                             ) : (
                               <span className="text-muted-foreground">Not set</span>
@@ -765,7 +939,7 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Textarea
-                            value={currentPanel.description || ""}
+                            value={(currentPanel as any).description || ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, description: e.target.value })
                             }
@@ -774,28 +948,26 @@ export const DatabaseManager = () => {
                           />
                         ) : (
                           <p className="text-sm text-muted-foreground">
-                            {panel.description || "No description"}
+                            {(displayPanel as any).description || "No description"}
                           </p>
                         )}
                       </div>
 
                       <div className="space-y-2 text-xs text-muted-foreground pt-4 border-t">
-                        <p>Created: {new Date(panel.created_at).toLocaleString()}</p>
-                        <p>Updated: {new Date(panel.updated_at).toLocaleString()}</p>
+                        <p>Created: {new Date(displayPanel.created_at).toLocaleString()}</p>
+                        <p>Updated: {new Date(displayPanel.updated_at).toLocaleString()}</p>
                         {manualOverrides.length > 0 && (
                           <p className="text-amber-600 font-medium">
                             🔒 {manualOverrides.length} field(s) protected from auto-updates
                           </p>
                         )}
-                        <p className="font-mono text-[10px]">ID: {panel.id}</p>
+                        <p className="font-mono text-[10px]">ID: {displayPanel.id}</p>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Action buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-6 border-t">
-                    {isEditing ? (
-                      <>
+                    {/* Edit mode action buttons - only show in expanded view */}
+                    {isEditing && (
+                      <div className="flex justify-end gap-2 mt-6 pt-6 border-t">
                         <Button variant="outline" onClick={cancelEdit}>
                           <X className="w-4 h-4 mr-2" />
                           Cancel
@@ -804,23 +976,12 @@ export const DatabaseManager = () => {
                           <Save className="w-4 h-4 mr-2" />
                           Save Changes
                         </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          variant="destructive"
-                          onClick={() => setDeleteConfirm(panel.id)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </Button>
-                        <Button onClick={() => startEdit(panel)}>
-                          <Edit2 className="w-4 h-4 mr-2" />
-                          Edit
-                        </Button>
-                      </>
+                      </div>
                     )}
                   </div>
+                      ) : null}
+                    </>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -843,7 +1004,7 @@ export const DatabaseManager = () => {
                 {panels.find((p) => p.id === deleteConfirm)?.name}
               </p>
               <p className="text-sm text-muted-foreground">
-                {panels.find((p) => p.id === deleteConfirm)?.manufacturer}
+                {(fullPanelData[deleteConfirm] as any)?.manufacturer || 'N/A'}
               </p>
             </div>
           )}
