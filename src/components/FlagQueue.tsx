@@ -109,6 +109,9 @@ export const FlagQueue = () => {
     flag: null
   });
   const [editedCorrections, setEditedCorrections] = useState<Record<string, any>>({});
+  const [fullEditMode, setFullEditMode] = useState(false);
+  const [fullPanelEdit, setFullPanelEdit] = useState<Record<string, any>>({});
+  const [originalPanelData, setOriginalPanelData] = useState<Record<string, any>>({});
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('solar-panel-unit-system');
@@ -184,6 +187,47 @@ export const FlagQueue = () => {
     }
   };
 
+  const loadFullPanelData = async (panelId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('solar_panels')
+        .select('*')
+        .eq('id', panelId)
+        .single();
+
+      if (error) {
+        throw new Error(`Failed to load panel data: ${error.message}`);
+      }
+
+      if (data) {
+        // Store original data for comparison
+        setOriginalPanelData(data);
+        
+        // Convert metric values to display units and populate edit state
+        const displayData: Record<string, any> = {};
+        const editableFields = ['name', 'manufacturer', 'wattage', 'voltage', 'length_cm', 'width_cm', 'weight_kg', 'price_usd', 'description', 'image_url', 'web_url', 'asin', 'piece_count'];
+        
+        editableFields.forEach(field => {
+          const value = (data as any)[field];
+          if (value !== null && value !== undefined) {
+            if (field === 'length_cm' || field === 'width_cm' || field === 'weight_kg') {
+              displayData[field] = convertValueForDisplay(field, value);
+            } else {
+              displayData[field] = value;
+            }
+          } else {
+            displayData[field] = '';
+          }
+        });
+        
+        setFullPanelEdit(displayData);
+      }
+    } catch (error) {
+      console.error('Error loading panel data:', error);
+      toast.error('Failed to load panel data');
+    }
+  };
+
   const applyEditedCorrections = async (panelId: string, corrections: Record<string, any>) => {
     try {
       // Convert values back to metric for storage
@@ -213,6 +257,77 @@ export const FlagQueue = () => {
     } catch (error) {
       console.error('Error applying corrections:', error);
       toast.error('Failed to apply corrections');
+    }
+  };
+
+  const applyFullPanelEdit = async (panelId: string, edits: Record<string, any>) => {
+    try {
+      // Convert values back to metric for storage
+      const convertedEdits: Record<string, any> = {};
+      
+      for (const [field, value] of Object.entries(edits)) {
+        // Skip empty values (keep existing)
+        if (value === '' || value === null) {
+          continue;
+        }
+        
+        if (field === 'length_cm' || field === 'width_cm' || field === 'weight_kg') {
+          // Convert from display unit to metric
+          convertedEdits[field] = convertValueForStorage(field, value.toString());
+        } else if (field === 'wattage' || field === 'voltage' || field === 'price_usd' || field === 'piece_count') {
+          // Numeric fields
+          convertedEdits[field] = parseFloat(value) || null;
+        } else {
+          // String fields
+          convertedEdits[field] = value || null;
+        }
+      }
+
+      // Detect which fields were changed for manual_overrides tracking
+      const changedFields: string[] = [];
+      const editableFields = ['name', 'manufacturer', 'wattage', 'voltage', 'length_cm', 'width_cm', 'weight_kg', 'price_usd', 'description', 'image_url', 'web_url', 'asin', 'piece_count'];
+      
+      editableFields.forEach(field => {
+        const originalValue = (originalPanelData as any)[field];
+        const newValue = convertedEdits[field];
+        
+        // Compare values properly (handle null/undefined)
+        if (originalValue !== newValue && newValue !== undefined) {
+          changedFields.push(field);
+        }
+      });
+
+      // Get existing manual_overrides
+      const { data: currentPanel } = await supabase
+        .from('solar_panels')
+        .select('manual_overrides')
+        .eq('id', panelId)
+        .single();
+
+      const existingOverrides = ((currentPanel as any)?.manual_overrides as string[]) || [];
+      const newOverrides = Array.from(new Set([...existingOverrides, ...changedFields]));
+
+      // Apply the edits with manual_overrides
+      const { error } = await supabase
+        .from('solar_panels')
+        .update({
+          ...convertedEdits,
+          manual_overrides: newOverrides,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', panelId);
+
+      if (error) {
+        console.error('Error applying full panel edit:', error);
+        toast.error('Failed to apply panel edits');
+        throw error;
+      }
+
+      toast.success(`Panel updated. ${changedFields.length} field(s) marked as manually edited.`);
+    } catch (error) {
+      console.error('Error applying full panel edit:', error);
+      toast.error('Failed to apply panel edits');
+      throw error;
     }
   };
 
@@ -697,13 +812,40 @@ export const FlagQueue = () => {
       )}
 
       {/* Review Dialog */}
-      <Dialog open={!!selectedFlag} onOpenChange={() => setSelectedFlag(null)}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={!!selectedFlag} onOpenChange={() => {
+        setSelectedFlag(null);
+        setFullEditMode(false);
+        setFullPanelEdit({});
+        setOriginalPanelData({});
+        setEditedCorrections({});
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Review Flag</DialogTitle>
-            <DialogDescription>
-              Review and approve or reject this flag submission
-            </DialogDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>Review Flag</DialogTitle>
+                <DialogDescription>
+                  Review and approve or reject this flag submission
+                </DialogDescription>
+              </div>
+              {selectedFlag && (
+                <Button
+                  variant={fullEditMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    if (!fullEditMode) {
+                      setFullEditMode(true);
+                      loadFullPanelData(selectedFlag.panel_id);
+                    } else {
+                      setFullEditMode(false);
+                    }
+                  }}
+                >
+                  <Edit className="w-4 h-4 mr-1" />
+                  {fullEditMode ? 'Cancel Full Edit' : 'Full Edit'}
+                </Button>
+              )}
+            </div>
           </DialogHeader>
 
           {selectedFlag && (
@@ -850,6 +992,174 @@ export const FlagQueue = () => {
                 </div>
               )}
 
+              {/* Full Edit Section */}
+              {fullEditMode && (
+                <div className="border-t pt-4 mt-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <Label className="text-base font-semibold">Full Panel Edit</Label>
+                    <Badge variant="secondary">All Fields</Badge>
+                  </div>
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                    {/* Product Info */}
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground">Product Information</h4>
+                      <div className="space-y-2">
+                        <div>
+                          <Label htmlFor="edit-name">Name *</Label>
+                          <Input
+                            id="edit-name"
+                            value={fullPanelEdit.name || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, name: e.target.value })}
+                            placeholder="Panel name"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-manufacturer">Manufacturer *</Label>
+                          <Input
+                            id="edit-manufacturer"
+                            value={fullPanelEdit.manufacturer || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, manufacturer: e.target.value })}
+                            placeholder="Manufacturer name"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-description">Description</Label>
+                          <Textarea
+                            id="edit-description"
+                            value={fullPanelEdit.description || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, description: e.target.value })}
+                            placeholder="Product description"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Specifications */}
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground">Specifications</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="edit-wattage">Wattage (W)</Label>
+                          <Input
+                            id="edit-wattage"
+                            type="number"
+                            value={fullPanelEdit.wattage || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, wattage: e.target.value })}
+                            placeholder="Wattage"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-voltage">Voltage (V)</Label>
+                          <Input
+                            id="edit-voltage"
+                            type="number"
+                            step="0.01"
+                            value={fullPanelEdit.voltage || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, voltage: e.target.value })}
+                            placeholder="Voltage"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-length">
+                            Length ({unitSystem === 'imperial' ? 'in' : 'cm'})
+                          </Label>
+                          <Input
+                            id="edit-length"
+                            type="number"
+                            step="0.01"
+                            value={fullPanelEdit.length_cm || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, length_cm: e.target.value })}
+                            placeholder="Length"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-width">
+                            Width ({unitSystem === 'imperial' ? 'in' : 'cm'})
+                          </Label>
+                          <Input
+                            id="edit-width"
+                            type="number"
+                            step="0.01"
+                            value={fullPanelEdit.width_cm || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, width_cm: e.target.value })}
+                            placeholder="Width"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-weight">
+                            Weight ({unitSystem === 'imperial' ? 'lbs' : 'kg'})
+                          </Label>
+                          <Input
+                            id="edit-weight"
+                            type="number"
+                            step="0.01"
+                            value={fullPanelEdit.weight_kg || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, weight_kg: e.target.value })}
+                            placeholder="Weight"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-piece-count">Piece Count</Label>
+                          <Input
+                            id="edit-piece-count"
+                            type="number"
+                            value={fullPanelEdit.piece_count || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, piece_count: e.target.value })}
+                            placeholder="Number of pieces"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pricing & Links */}
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground">Pricing & Links</h4>
+                      <div className="space-y-2">
+                        <div>
+                          <Label htmlFor="edit-price">Price (USD)</Label>
+                          <Input
+                            id="edit-price"
+                            type="number"
+                            step="0.01"
+                            value={fullPanelEdit.price_usd || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, price_usd: e.target.value })}
+                            placeholder="Price in USD"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-web-url">Web URL</Label>
+                          <Input
+                            id="edit-web-url"
+                            value={fullPanelEdit.web_url || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, web_url: e.target.value })}
+                            placeholder="Product URL"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-image-url">Image URL</Label>
+                          <Input
+                            id="edit-image-url"
+                            value={fullPanelEdit.image_url || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, image_url: e.target.value })}
+                            placeholder="Image URL"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-asin">ASIN</Label>
+                          <Input
+                            id="edit-asin"
+                            value={fullPanelEdit.asin || ''}
+                            onChange={(e) => setFullPanelEdit({ ...fullPanelEdit, asin: e.target.value })}
+                            placeholder="Amazon ASIN"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <Label htmlFor="admin-note">Admin Note (Optional)</Label>
                 <Textarea
@@ -864,7 +1174,13 @@ export const FlagQueue = () => {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedFlag(null)}>
+            <Button variant="outline" onClick={() => {
+              setSelectedFlag(null);
+              setFullEditMode(false);
+              setFullPanelEdit({});
+              setOriginalPanelData({});
+              setEditedCorrections({});
+            }}>
               Cancel
             </Button>
             <Button
@@ -897,12 +1213,29 @@ export const FlagQueue = () => {
             <Button
               onClick={async () => {
                 if (selectedFlag) {
-                  // If there are edited corrections, update the panel with them
-                  if (Object.keys(editedCorrections).length > 0) {
-                    await applyEditedCorrections(selectedFlag.panel_id, editedCorrections);
+                  try {
+                    // If full edit mode is active and has changes, apply full panel edit
+                    if (fullEditMode && Object.keys(fullPanelEdit).length > 0) {
+                      await applyFullPanelEdit(selectedFlag.panel_id, fullPanelEdit);
+                      setFullPanelEdit({});
+                      setOriginalPanelData({});
+                    }
+                    
+                    // If there are edited corrections, update the panel with them
+                    if (Object.keys(editedCorrections).length > 0) {
+                      await applyEditedCorrections(selectedFlag.panel_id, editedCorrections);
+                    }
+                    
+                    // Clear all edit states
+                    setEditedCorrections({});
+                    setFullEditMode(false);
+                    
+                    // Approve the flag
+                    handleFlagAction(selectedFlag.id, 'approve', adminNote);
+                  } catch (error) {
+                    // Error already handled in applyFullPanelEdit or applyEditedCorrections
+                    console.error('Error applying edits before approval:', error);
                   }
-                  setEditedCorrections({});
-                  handleFlagAction(selectedFlag.id, 'approve', adminNote);
                 }
               }}
               disabled={actionLoading}
