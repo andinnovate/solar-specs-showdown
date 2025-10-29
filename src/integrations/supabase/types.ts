@@ -14,63 +14,98 @@ export type Database = {
   }
   public: {
     Tables: {
-      solar_panels: {
+      raw_scraper_data: {
         Row: {
           asin: string
+          created_at: string | null
+          id: string
+          panel_id: string | null
+          processing_metadata: Json | null
+          response_size_bytes: number | null
+          scraper_response: Json
+          scraper_version: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          asin: string
+          created_at?: string | null
+          id?: string
+          panel_id?: string | null
+          processing_metadata?: Json | null
+          response_size_bytes?: number | null
+          scraper_response: Json
+          scraper_version?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          asin?: string
+          created_at?: string | null
+          id?: string
+          panel_id?: string | null
+          processing_metadata?: Json | null
+          response_size_bytes?: number | null
+          scraper_response?: Json
+          scraper_version?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_scraper_data_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "solar_panels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      solar_panels: {
+        Row: {
           created_at: string
           description: string | null
           id: string
           image_url: string | null
-          length_cm: number | null
+          length_cm: number
           manufacturer: string
-          missing_fields: Json | null
           name: string
-          piece_count: number
-          price_usd: number | null
+          price_usd: number
           updated_at: string
           voltage: number | null
-          wattage: number | null
+          wattage: number
           web_url: string | null
-          weight_kg: number | null
-          width_cm: number | null
+          weight_kg: number
+          width_cm: number
         }
         Insert: {
-          asin: string
           created_at?: string
           description?: string | null
           id?: string
           image_url?: string | null
-          length_cm?: number | null
+          length_cm: number
           manufacturer: string
-          missing_fields?: Json | null
           name: string
-          piece_count?: number
-          price_usd?: number | null
+          price_usd: number
           updated_at?: string
           voltage?: number | null
-          wattage?: number | null
+          wattage: number
           web_url?: string | null
-          weight_kg?: number | null
-          width_cm?: number | null
+          weight_kg: number
+          width_cm: number
         }
         Update: {
-          asin?: string
           created_at?: string
           description?: string | null
           id?: string
           image_url?: string | null
-          length_cm?: number | null
+          length_cm?: number
           manufacturer?: string
-          missing_fields?: Json | null
           name?: string
-          piece_count?: number
-          price_usd?: number | null
+          price_usd?: number
           updated_at?: string
           voltage?: number | null
-          wattage?: number | null
+          wattage?: number
           web_url?: string | null
-          weight_kg?: number | null
-          width_cm?: number | null
+          weight_kg?: number
+          width_cm?: number
         }
         Relationships: []
       }
@@ -282,26 +317,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-// Application-specific types
-export interface SolarPanel {
-  id: string;
-  asin: string;
-  name: string;
-  manufacturer: string;
-  length_cm: number | null;  // Now nullable
-  width_cm: number | null;   // Now nullable
-  weight_kg: number | null;  // Now nullable
-  wattage: number | null;    // Now nullable
-  voltage: number | null;
-  price_usd: number | null;  // Now nullable
-  description: string | null;
-  image_url: string | null;
-  web_url: string | null;
-  piece_count: number;       // Number of pieces in the set
-  missing_fields?: string[];  // NEW
-  flag_count?: number;
-  user_verified_overrides?: string[];
-  created_at: string;
-  updated_at: string;
-}
