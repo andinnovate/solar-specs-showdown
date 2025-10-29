@@ -62,8 +62,8 @@ export const DatabaseManager = () => {
       setFilteredPanels(
         panels.filter((panel) => {
           return (
-            panel.name.toLowerCase().includes(term) ||
-            panel.asin.toLowerCase().includes(term) ||
+            (panel.name && panel.name.toLowerCase().includes(term)) ||
+            (panel.asin && panel.asin.toLowerCase().includes(term)) ||
             (panel.manufacturer && panel.manufacturer.toLowerCase().includes(term)) ||
             (panel.web_url && panel.web_url.toLowerCase().includes(term))
           );
