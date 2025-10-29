@@ -90,6 +90,101 @@ export const DatabaseManager = () => {
     setOriginalPanel({});
   };
 
+  const checkAndResolveFlags = async (panelId: string) => {
+    try {
+      // Get all pending flags for this panel
+      const { data: flags, error: flagsError } = await supabase
+        .from('user_flags' as any)
+        .select('id, flag_type, flagged_fields')
+        .eq('panel_id', panelId)
+        .eq('status', 'pending');
+
+      if (flagsError || !flags || flags.length === 0) {
+        return;
+      }
+
+      // Get current panel data after update to check if fields are resolved
+      const { data: currentPanel, error: panelError } = await supabase
+        .from('solar_panels')
+        .select('*')
+        .eq('id', panelId)
+        .single();
+
+      if (panelError || !currentPanel) {
+        return;
+      }
+
+      // Use current panel data as the final state (already includes the updates)
+      const finalPanelData = currentPanel;
+
+      // Map flagged field names to database fields
+      const fieldMapping: Record<string, string[]> = {
+        'dimensions': ['length_cm', 'width_cm'],
+        'weight': ['weight_kg'],
+        'price': ['price_usd'],
+        // Direct mappings
+        'wattage': ['wattage'],
+        'voltage': ['voltage'],
+        'name': ['name'],
+        'manufacturer': ['manufacturer'],
+        'description': ['description'],
+      };
+
+      // Get current user for resolved_by
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check each flag
+      for (const flag of flags) {
+        const flagData = flag as any;
+        const flaggedFields = (flagData.flagged_fields as string[]) || [];
+        const flagType = flagData.flag_type as string;
+
+        // For system_missing_data flags, check if all missing fields are now present
+        if (flagType === 'system_missing_data' || flagType === 'system_parse_failure') {
+          let allResolved = true;
+
+          for (const flaggedField of flaggedFields) {
+            const dbFields = fieldMapping[flaggedField] || [flaggedField];
+            
+            // Check if all required fields are present and not null
+            const fieldResolved = dbFields.every(dbField => {
+              const value = (finalPanelData as any)[dbField];
+              return value !== null && value !== undefined && value !== '';
+            });
+
+            if (!fieldResolved) {
+              allResolved = false;
+              break;
+            }
+          }
+
+          // If all missing fields are resolved, auto-approve the flag
+          if (allResolved) {
+            await supabase
+              .from('user_flags' as any)
+              .update({
+                status: 'approved',
+                admin_note: 'Automatically approved: Missing data resolved via admin panel edit',
+                resolved_by: user.id,
+                resolved_at: new Date().toISOString()
+              })
+              .eq('id', flagData.id);
+
+            toast.success(`Flag auto-approved: Missing data resolved`);
+          }
+        } else if (flagType === 'user') {
+          // For user flags, check if all flagged fields have been corrected
+          // This is optional - we could auto-approve if fields match suggested corrections
+          // For now, we'll leave user flags for manual review
+        }
+      }
+    } catch (error) {
+      console.error('Error checking flags:', error);
+      // Don't show error to user - flag checking is non-critical
+    }
+  };
+
   const saveEdit = async () => {
     if (!editingId) return;
 
@@ -162,6 +257,9 @@ export const DatabaseManager = () => {
           toast.warning('Panel ASIN updated but some related data may need manual review');
         }
       }
+
+      // Check and auto-approve flags if missing data is resolved (after update is complete)
+      await checkAndResolveFlags(editingId);
 
       if (changedFields.length > 0) {
         toast.success(`Panel updated. ${changedFields.length} field(s) marked as manually edited.`);

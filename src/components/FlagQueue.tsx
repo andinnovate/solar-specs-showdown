@@ -399,6 +399,30 @@ export const FlagQueue = () => {
     setDeleteDialog({ isOpen: true, flag });
   };
 
+  const handleClearFlag = async (flag: FlagData) => {
+    try {
+      setActionLoading(true);
+      
+      // Simply delete the flag - no changes applied, panel remains unchanged
+      const { error } = await supabase
+        .from('user_flags' as any)
+        .delete()
+        .eq('id', flag.id);
+
+      if (error) {
+        throw new Error(`Failed to clear flag: ${error.message}`);
+      }
+
+      toast.success('Flag cleared successfully');
+      loadFlags();
+    } catch (error) {
+      console.error('Error clearing flag:', error);
+      toast.error('Failed to clear flag');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (!deleteDialog.flag) return;
 
@@ -793,6 +817,16 @@ export const FlagQueue = () => {
                     >
                       <Edit className="w-4 h-4 mr-1" />
                       Review
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleClearFlag(flag)}
+                      disabled={actionLoading}
+                      className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      Clear Flag
                     </Button>
                     <Button
                       variant="ghost"
