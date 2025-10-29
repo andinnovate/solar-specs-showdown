@@ -1285,11 +1285,19 @@ export const FlagQueue = () => {
       <AlertDialog open={deleteDialog.isOpen} onOpenChange={handleDeleteCancel}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Flag?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Flag and Panel?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this flag for panel: <strong>{deleteDialog.flag?.panel_name}</strong>?
+              Are you sure you want to delete this flag and the associated panel: <strong>{deleteDialog.flag?.panel_name}</strong>?
               <br /><br />
-              This action cannot be undone. The flag will be permanently removed from the database.
+              This action will:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Delete the flag from the database</li>
+                <li>Delete the associated panel from the database</li>
+                <li>Delete associated scraper data</li>
+                <li>Blacklist the ASIN from future ingestion</li>
+              </ul>
+              <br />
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
