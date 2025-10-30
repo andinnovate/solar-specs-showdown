@@ -143,19 +143,16 @@ export const FlagQueue = () => {
         return true;
       }) || [];
 
-      // Optionally hydrate current panel values if present in the row shape
+      // The view already includes panel_name, manufacturer, wattage, price_usd from solar_panels JOIN
+      // Map those to the current_* format expected by the UI
       const processedData = filtered.map(flag => ({
         ...flag,
-        current_name: flag.solar_panels?.name,
-        current_manufacturer: flag.solar_panels?.manufacturer,
-        current_wattage: flag.solar_panels?.wattage,
-        current_voltage: flag.solar_panels?.voltage,
-        current_length_cm: flag.solar_panels?.length_cm,
-        current_width_cm: flag.solar_panels?.width_cm,
-        current_weight_kg: flag.solar_panels?.weight_kg,
-        current_price_usd: flag.solar_panels?.price_usd,
-        current_description: flag.solar_panels?.description,
-        web_url: flag.solar_panels?.web_url,
+        current_name: flag.panel_name,
+        current_manufacturer: flag.manufacturer,
+        current_wattage: flag.wattage,
+        current_price_usd: flag.price_usd,
+        // Note: voltage, length_cm, width_cm, weight_kg, description, web_url not in view
+        // These will be loaded separately if needed in loadFullPanelData
       })) || [];
 
       setFlags(processedData as FlagData[]);
