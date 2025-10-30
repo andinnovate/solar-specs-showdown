@@ -128,43 +128,23 @@ export const FlagQueue = () => {
     try {
       setLoading(true);
       
-      // Query the admin_flag_queue view to get pending flags with current panel data
-      let query = supabase
-        .from('admin_flag_queue' as any)
-        .select(`
-          *,
-          solar_panels!inner(
-            name,
-            manufacturer,
-            wattage,
-            voltage,
-            length_cm,
-            width_cm,
-            weight_kg,
-            price_usd,
-            description,
-            web_url
-          )
-        `);
-      
-      // Apply filter based on flag type
-      if (flagFilter !== 'all') {
-        if (flagFilter === 'system') {
-          query = query.like('flag_type', 'system_%');
-        } else if (flagFilter === 'user') {
-          // User reports include both 'user' flags and 'deletion_recommendation' flags
-          query = query.in('flag_type', ['user', 'deletion_recommendation']);
-        }
-      }
-      
-      const { data, error } = await query.order('created_at', { ascending: false });
+      // Securely fetch via RPC to avoid direct view access and auth.users exposure
+      const { data, error } = await (supabase as any).rpc('admin_get_flag_queue');
 
       if (error) {
         throw new Error(`Failed to load flags: ${error.message}`);
       }
 
-      // Process the data to include current panel values
-      const processedData = (data as any[])?.map(flag => ({
+      // Apply client-side filter based on flag type
+      const filtered = (data as any[])?.filter(flag => {
+        if (flagFilter === 'all') return true;
+        if (flagFilter === 'system') return typeof flag.flag_type === 'string' && flag.flag_type.startsWith('system_');
+        if (flagFilter === 'user') return ['user', 'deletion_recommendation'].includes(flag.flag_type);
+        return true;
+      }) || [];
+
+      // Optionally hydrate current panel values if present in the row shape
+      const processedData = filtered.map(flag => ({
         ...flag,
         current_name: flag.solar_panels?.name,
         current_manufacturer: flag.solar_panels?.manufacturer,
