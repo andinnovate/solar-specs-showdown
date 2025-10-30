@@ -26,3 +26,6 @@ database_export
 ASIN_AFFILIATE_LINK
 scraperapi_sample.py
 __pycache__/
+localhost_export_*.csv
+.coverage
+supabase/.temp/
