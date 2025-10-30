@@ -25,6 +25,7 @@ import {
   Calendar, 
   AlertCircle,
   CheckCircle,
+  XCircle,
   Clock,
   ExternalLink,
   Trash2
@@ -800,9 +801,9 @@ export const FlagQueue = () => {
                       size="sm"
                       onClick={() => handleClearFlag(flag)}
                       disabled={actionLoading}
-                      className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted"
                     >
-                      <CheckCircle className="w-4 h-4 mr-1" />
+                      <XCircle className="w-4 h-4 mr-1" />
                       Clear Flag
                     </Button>
                     <Button
