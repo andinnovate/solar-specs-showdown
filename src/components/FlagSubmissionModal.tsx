@@ -40,6 +40,7 @@ const fieldConfig = {
   width_cm: { label: "Width", type: "number", placeholder: "Enter width", step: "0.01", unit: "cm" },
   weight_kg: { label: "Weight", type: "number", placeholder: "Enter weight", step: "0.01", unit: "kg" },
   price_usd: { label: "Price (USD)", type: "number", placeholder: "Enter price", step: "0.01" },
+  piece_count: { label: "Piece Count", type: "number", placeholder: "Enter piece count", step: "1" },
   description: { label: "Description", type: "textarea", placeholder: "Enter correct description", prepopulate: true }
 };
 
