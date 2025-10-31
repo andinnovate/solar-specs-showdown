@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { X, ExternalLink } from "lucide-react";
 import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, formatWattageWithPieces } from "@/lib/unitConversions";
 import { Tables } from "@/integrations/supabase/types";
+import { addAmazonAffiliateTag } from "@/lib/utils";
 
 type SolarPanel = Tables<"solar_panels"> & {
   user_verified_overrides?: string[] | null;
@@ -76,9 +77,10 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                         {panel.web_url && (() => {
                           try {
                             const domain = new URL(panel.web_url).hostname;
+                            const affiliateUrl = addAmazonAffiliateTag(panel.web_url);
                             return (
                               <a 
-                                href={panel.web_url} 
+                                href={affiliateUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="hover:opacity-70 transition-opacity inline-flex items-center"
