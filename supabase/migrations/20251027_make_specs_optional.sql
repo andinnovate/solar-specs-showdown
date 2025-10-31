@@ -38,6 +38,7 @@ CREATE POLICY "System can create flags" ON user_flags
 COMMENT ON COLUMN user_flags.flag_type IS 'Type of flag: user (user-submitted), system_missing_data (auto-generated for missing specs), system_parse_failure (auto-generated for parse errors)';
 
 -- Update admin_flag_queue view to include flag_type column
+DROP VIEW IF EXISTS admin_flag_queue;
 CREATE OR REPLACE VIEW admin_flag_queue AS
 SELECT 
   uf.id,
