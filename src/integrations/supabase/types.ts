@@ -66,7 +66,9 @@ export type Database = {
           image_url: string | null
           length_cm: number
           manufacturer: string
+          missing_fields: Json | null
           name: string
+          piece_count: number
           price_usd: number
           updated_at: string
           voltage: number | null
@@ -82,7 +84,9 @@ export type Database = {
           image_url?: string | null
           length_cm: number
           manufacturer: string
+          missing_fields?: Json | null
           name: string
+          piece_count?: number
           price_usd: number
           updated_at?: string
           voltage?: number | null
@@ -98,7 +102,9 @@ export type Database = {
           image_url?: string | null
           length_cm?: number
           manufacturer?: string
+          missing_fields?: Json | null
           name?: string
+          piece_count?: number
           price_usd?: number
           updated_at?: string
           voltage?: number | null

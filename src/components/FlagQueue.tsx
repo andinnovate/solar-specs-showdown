@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Dialog, 
@@ -75,6 +76,7 @@ interface FlagData {
   current_weight_kg?: number;
   current_price_usd?: number;
   current_description?: string;
+  current_piece_count?: number;
   web_url?: string;
 }
 
@@ -89,7 +91,8 @@ const fieldLabels: Record<string, string> = {
   price_usd: "Price",
   web_url: "Web URL",
   image_url: "Image URL",
-  description: "Description"
+  description: "Description",
+  piece_count: "Piece Count"
 };
 
 const deletionReasonLabels: Record<string, string> = {
@@ -120,6 +123,7 @@ export const FlagQueue = () => {
     }
     return 'metric';
   });
+  const [selectedFlags, setSelectedFlags] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadFlags();
@@ -488,6 +492,182 @@ export const FlagQueue = () => {
     setDeleteDialog({ isOpen: false, flag: null });
   };
 
+  const toggleFlagSelection = (flagId: string) => {
+    setSelectedFlags(prev => {
+      const next = new Set(prev);
+      if (next.has(flagId)) {
+        next.delete(flagId);
+      } else {
+        next.add(flagId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedFlags.size === flags.filter(f => f.status === 'pending').length) {
+      setSelectedFlags(new Set());
+    } else {
+      setSelectedFlags(new Set(flags.filter(f => f.status === 'pending').map(f => f.id)));
+    }
+  };
+
+  const handleBulkAccept = async () => {
+    if (selectedFlags.size === 0) return;
+    
+    try {
+      setActionLoading(true);
+      
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('You must be logged in to manage flags');
+      }
+
+      const selectedFlagObjects = flags.filter(f => selectedFlags.has(f.id));
+      
+      for (const flag of selectedFlagObjects) {
+        // Apply suggested corrections if they exist
+        if (Object.keys(flag.suggested_corrections).length > 0) {
+          const corrections: Record<string, any> = {};
+          
+          for (const [field, value] of Object.entries(flag.suggested_corrections)) {
+            if (typeof value === 'number') {
+              corrections[field] = convertValueForStorage(field, value.toString());
+            } else {
+              corrections[field] = value;
+            }
+          }
+
+          if (Object.keys(corrections).length > 0) {
+            await supabase
+              .from('solar_panels')
+              .update(corrections)
+              .eq('id', flag.panel_id);
+          }
+        }
+
+        // Approve the flag
+        await supabase
+          .from('user_flags' as any)
+          .update({
+            status: 'approved',
+            admin_note: 'Bulk approved with changes applied',
+            resolved_by: user.id,
+            resolved_at: new Date().toISOString()
+          })
+          .eq('id', flag.id);
+      }
+
+      toast.success(`${selectedFlags.size} flag(s) approved and changes applied`);
+      setSelectedFlags(new Set());
+      loadFlags();
+    } catch (error) {
+      console.error('Error bulk accepting flags:', error);
+      toast.error('Failed to accept flags');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBulkClear = async () => {
+    if (selectedFlags.size === 0) return;
+    
+    try {
+      setActionLoading(true);
+      
+      for (const flagId of selectedFlags) {
+        await supabase
+          .from('user_flags' as any)
+          .delete()
+          .eq('id', flagId);
+      }
+
+      toast.success(`${selectedFlags.size} flag(s) cleared successfully`);
+      setSelectedFlags(new Set());
+      loadFlags();
+    } catch (error) {
+      console.error('Error bulk clearing flags:', error);
+      toast.error('Failed to clear flags');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedFlags.size === 0) return;
+    
+    try {
+      setActionLoading(true);
+      
+      const selectedFlagObjects = flags.filter(f => selectedFlags.has(f.id));
+      
+      for (const flag of selectedFlagObjects) {
+        // Load panel data to get web_url if not available in flag
+        let webUrl = flag.web_url;
+        if (!webUrl && flag.panel_id) {
+          const { data: panelData } = await supabase
+            .from('solar_panels')
+            .select('web_url')
+            .eq('id', flag.panel_id)
+            .single();
+          webUrl = panelData?.web_url;
+        }
+
+        // Delete the flag
+        await supabase
+          .from('user_flags' as any)
+          .delete()
+          .eq('id', flag.id);
+
+        // Delete the associated panel if it exists
+        if (flag.panel_id) {
+          await supabase
+            .from('solar_panels')
+            .delete()
+            .eq('id', flag.panel_id);
+        }
+
+        // Extract ASIN from web_url and handle cleanup
+        if (webUrl) {
+          const asinMatch = webUrl.match(/\/dp\/([A-Z0-9]{10})/);
+          if (asinMatch && asinMatch[1]) {
+            const asin = asinMatch[1];
+            
+            // Delete raw_scraper_data entries
+            await supabase
+              .from('raw_scraper_data' as any)
+              .delete()
+              .eq('asin', asin);
+
+            // Log to filtered_asins
+            const productName = flag.panel_name || `${flag.manufacturer || 'Unknown'} Panel`;
+            await supabase
+              .from('filtered_asins' as any)
+              .insert({
+                asin: asin,
+                filter_stage: 'ingest',
+                filter_reason: 'admin_deleted',
+                product_name: productName,
+                product_url: webUrl,
+                wattage: flag.wattage || null,
+                confidence: 1.0,
+                created_by: 'admin'
+              });
+          }
+        }
+      }
+
+      toast.success(`${selectedFlags.size} flag(s) and panels deleted successfully. ASINs have been blacklisted.`);
+      setSelectedFlags(new Set());
+      loadFlags();
+    } catch (error) {
+      console.error('Error bulk deleting flags:', error);
+      toast.error('Failed to delete flags');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'approved':
@@ -523,7 +703,8 @@ export const FlagQueue = () => {
       width_cm: 'current_width_cm',
       weight_kg: 'current_weight_kg',
       price_usd: 'current_price_usd',
-      description: 'current_description'
+      description: 'current_description',
+      piece_count: 'current_piece_count'
     };
     
     const currentField = fieldMap[field];
@@ -621,7 +802,7 @@ export const FlagQueue = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Flag className="w-6 h-6 text-red-500" />
             Flag Queue
@@ -630,8 +811,25 @@ export const FlagQueue = () => {
             Review user-submitted flags for incorrect panel information
           </p>
         </div>
-        <div className="text-sm text-muted-foreground">
-          {flags.length} flag{flags.length !== 1 ? 's' : ''} pending review
+        <div className="flex items-center gap-4">
+          {flags.length > 0 && flags.some(f => f.status === 'pending') && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="select-all"
+                checked={
+                  flags.filter(f => f.status === 'pending').length > 0 &&
+                  selectedFlags.size === flags.filter(f => f.status === 'pending').length
+                }
+                onCheckedChange={toggleSelectAll}
+              />
+              <Label htmlFor="select-all" className="text-sm cursor-pointer">
+                Select All ({selectedFlags.size} selected)
+              </Label>
+            </div>
+          )}
+          <div className="text-sm text-muted-foreground">
+            {flags.length} flag{flags.length !== 1 ? 's' : ''} pending review
+          </div>
         </div>
       </div>
 
@@ -657,8 +855,8 @@ export const FlagQueue = () => {
           {flags.map((flag) => (
             <Card key={flag.id} className="hover:shadow-md transition-shadow">
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 space-y-2">
                     <CardTitle className="text-lg">{flag.panel_name}</CardTitle>
                     <CardDescription>
                       {flag.manufacturer} • {flag.wattage ? `${flag.wattage}W` : 'Power N/A'} • {flag.price_usd ? `$${flag.price_usd}` : 'Price N/A'}
@@ -787,7 +985,12 @@ export const FlagQueue = () => {
 
                 {/* Actions */}
                 {flag.status === 'pending' && (
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex items-center gap-2 pt-2">
+                    <Checkbox
+                      checked={selectedFlags.has(flag.id)}
+                      onCheckedChange={() => toggleFlagSelection(flag.id)}
+                      aria-label={`Select flag ${flag.id}`}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
@@ -1289,6 +1492,45 @@ export const FlagQueue = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Floating Bulk Action Buttons */}
+      {selectedFlags.size > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 flex gap-2 shadow-lg">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-2 flex items-center gap-2">
+            <span className="text-sm font-medium px-2">
+              {selectedFlags.size} selected
+            </span>
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            <div className="flex gap-2">
+              <Button
+                onClick={handleBulkAccept}
+                disabled={actionLoading}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <CheckCircle className="w-4 h-4 mr-1" />
+                Accept Changes
+              </Button>
+              <Button
+                onClick={handleBulkClear}
+                disabled={actionLoading}
+                variant="outline"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <XCircle className="w-4 h-4 mr-1" />
+                Clear Flags
+              </Button>
+              <Button
+                onClick={handleBulkDelete}
+                disabled={actionLoading}
+                variant="destructive"
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Delete Panels
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

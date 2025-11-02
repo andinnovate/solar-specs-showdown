@@ -15,6 +15,7 @@ import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
 import { UnitSystem, formatDimensions, formatWeight } from "@/lib/unitConversions";
 import { isAdminUser } from "@/lib/adminUtils";
 import { Tables } from "@/integrations/supabase/types";
+import { addAmazonAffiliateTag } from "@/lib/utils";
 
 type SolarPanel = Tables<"solar_panels"> & {
   user_verified_overrides?: string[] | null;
@@ -170,28 +171,34 @@ const Index = () => {
       }));
       setPanels(transformedData);
       
-      // Set initial filter bounds based on data
-      if (data && data.length > 0) {
-        const wattages = data.map(p => p.wattage);
-        const voltages = data.map(p => p.voltage);
-        const prices = data.map(p => p.price_usd);
-        const weights = data.map(p => p.weight_kg);
-        const lengths = data.map(p => p.length_cm);
-        const widths = data.map(p => p.width_cm);
-        const pricePerWatts = data.map(p => p.price_usd / p.wattage);
-        const wattsPerKgs = data.map(p => p.wattage / p.weight_kg);
-        const wattsPerSqMs = data.map(p => p.wattage / ((p.length_cm * p.width_cm) / 10000));
+      // Set initial filter bounds based on transformed data (matching bounds logic)
+      if (transformedData && transformedData.length > 0) {
+        // Filter out null values for calculations (matching bounds logic)
+        const validWattages = transformedData.filter(p => p.wattage !== null).map(p => p.wattage!);
+        const validVoltages = transformedData.filter(p => p.voltage !== null).map(p => p.voltage!);
+        const validPrices = transformedData.filter(p => p.price_usd !== null).map(p => p.price_usd!);
+        const validWeights = transformedData.filter(p => p.weight_kg !== null).map(p => p.weight_kg!);
+        const validLengths = transformedData.filter(p => p.length_cm !== null).map(p => p.length_cm!);
+        const validWidths = transformedData.filter(p => p.width_cm !== null).map(p => p.width_cm!);
+        const validPricePerWatts = transformedData.filter(p => p.price_usd !== null && p.wattage !== null).map(p => {
+          const totalWattage = p.wattage! * (p.piece_count || 1);
+          return p.price_usd! / totalWattage;
+        });
+        const validWattsPerKgs = transformedData.filter(p => p.wattage !== null && p.weight_kg !== null).map(p => p.wattage! / p.weight_kg!);
+        const validWattsPerSqMs = transformedData.filter(p => p.wattage !== null && p.length_cm !== null && p.width_cm !== null).map(p => 
+          p.wattage! / ((p.length_cm! * p.width_cm!) / 10000)
+        );
         
         setFilters({
-          wattageRange: [Math.min(...wattages), Math.max(...wattages)],
-          voltageRange: [Math.min(...voltages), Math.max(...voltages)],
-          priceRange: [Math.min(...prices), Math.max(...prices)],
-          weightRange: [Math.min(...weights), Math.max(...weights)],
-          lengthRange: [Math.min(...lengths), Math.max(...lengths)],
-          widthRange: [Math.min(...widths), Math.max(...widths)],
-          pricePerWattRange: [Math.min(...pricePerWatts), Math.max(...pricePerWatts)],
-          wattsPerKgRange: [Math.min(...wattsPerKgs), Math.max(...wattsPerKgs)],
-          wattsPerSqMRange: [Math.min(...wattsPerSqMs), Math.max(...wattsPerSqMs)],
+          wattageRange: validWattages.length > 0 ? [Math.min(...validWattages), Math.max(...validWattages)] : [0, 1000],
+          voltageRange: validVoltages.length > 0 ? [Math.min(...validVoltages), Math.max(...validVoltages)] : [0, 100],
+          priceRange: validPrices.length > 0 ? [Math.min(...validPrices), Math.max(...validPrices)] : [0, 1000],
+          weightRange: validWeights.length > 0 ? [Math.min(...validWeights), Math.max(...validWeights)] : [0, 100],
+          lengthRange: validLengths.length > 0 ? [Math.min(...validLengths), Math.max(...validLengths)] : [0, 300],
+          widthRange: validWidths.length > 0 ? [Math.min(...validWidths), Math.max(...validWidths)] : [0, 200],
+          pricePerWattRange: validPricePerWatts.length > 0 ? [Math.min(...validPricePerWatts), Math.max(...validPricePerWatts)] : [0, 10],
+          wattsPerKgRange: validWattsPerKgs.length > 0 ? [Math.min(...validWattsPerKgs), Math.max(...validWattsPerKgs)] : [0, 100],
+          wattsPerSqMRange: validWattsPerSqMs.length > 0 ? [Math.min(...validWattsPerSqMs), Math.max(...validWattsPerSqMs)] : [0, 300],
           showFavoritesOnly: false,
           showIncomplete: true,  // NEW: Reset to showing incomplete panels
         });
@@ -762,9 +769,10 @@ const Index = () => {
                           {panel.web_url && (() => {
                             try {
                               const domain = new URL(panel.web_url).hostname;
+                              const affiliateUrl = addAmazonAffiliateTag(panel.web_url);
                               return (
                                 <a 
-                                  href={panel.web_url} 
+                                  href={affiliateUrl} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   className="hover:opacity-70 transition-opacity inline-flex items-center p-2"

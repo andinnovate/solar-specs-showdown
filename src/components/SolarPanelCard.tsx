@@ -8,6 +8,7 @@ import { FlagIcon } from "@/components/FlagIcon";
 import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
 import { useState, useEffect } from "react";
 import { Tables } from "@/integrations/supabase/types";
+import { addAmazonAffiliateTag } from "@/lib/utils";
 
 type SolarPanel = Tables<"solar_panels"> & {
   user_verified_overrides?: string[] | null;
@@ -166,9 +167,10 @@ export const SolarPanelCard = ({
               {panel.web_url && (() => {
                 try {
                   const domain = new URL(panel.web_url).hostname;
+                  const affiliateUrl = addAmazonAffiliateTag(panel.web_url);
                   return (
                     <a 
-                      href={panel.web_url} 
+                      href={affiliateUrl} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="hover:opacity-70 transition-opacity inline-flex items-center flex-shrink-0"
