@@ -159,10 +159,19 @@ async def update_panel_price(
         
         # Check if price changed
         if old_price == new_price:
-            logger.log_script_event(
-                "INFO",
-                f"Price unchanged for {panel_name}: ${old_price}"
-            )
+            # Update timestamp even when price is unchanged
+            timestamp_updated = await db.update_panel_timestamp(panel_id)
+            if timestamp_updated:
+                logger.log_script_event(
+                    "INFO",
+                    f"Price unchanged for {panel_name}: ${old_price} (timestamp updated)"
+                )
+            else:
+                logger.log_script_event(
+                    "WARNING",
+                    f"Price unchanged for {panel_name}: ${old_price} (failed to update timestamp)"
+                )
+            
             return {
                 'success': True,
                 'old_price': old_price,
@@ -326,6 +335,13 @@ Examples:
             
             if not panels_to_update:
                 logger.log_script_event("INFO", "No panels with ASINs need price updates")
+                # Output summary even when no panels processed
+                print("\n" + "=" * 60)
+                print("SUMMARY")
+                print("=" * 60)
+                print("INFO - Price update completed: 0 updated, 0 unchanged, 0 failed")
+                print("Total panels processed: 0")
+                print("=" * 60 + "\n")
                 return 0
             
             # Track results
@@ -421,6 +437,18 @@ Examples:
             # Get scraper usage stats
             stats = await db.get_scraper_usage_stats(days=1)
             logger.log_script_event("INFO", f"Today's ScraperAPI stats: {stats}")
+            
+            # Output summary to stdout
+            print("\n" + "=" * 60)
+            print("SUMMARY")
+            print("=" * 60)
+            print(f"INFO - Price update completed: {results['successful']} updated, "
+                  f"{results['unchanged']} unchanged, {results['failed']} failed")
+            print(f"Total panels processed: {results['total']}")
+            if stats.get('total_requests', 0) > 0:
+                print(f"ScraperAPI requests: {stats.get('total_requests', 0)} "
+                      f"(Success rate: {stats.get('success_rate', 0):.1f}%)")
+            print("=" * 60 + "\n")
             
             # Send notification if requested
             if args.notify:

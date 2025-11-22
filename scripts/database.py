@@ -117,6 +117,25 @@ class SolarPanelDB:
             )
             return False
     
+    async def update_panel_timestamp(self, panel_id: str) -> bool:
+        """Update panel updated_at timestamp without changing price"""
+        try:
+            self.client.table('solar_panels').update({
+                'updated_at': 'now()'
+            }).eq('id', panel_id).execute()
+            
+            await self.log_script_execution(
+                'database', 'INFO', 
+                f'Updated timestamp for panel {panel_id}'
+            )
+            return True
+        except Exception as e:
+            await self.log_script_execution(
+                'database', 'ERROR', 
+                f'Failed to update panel timestamp: {str(e)}'
+            )
+            return False
+    
     async def add_new_panel(self, panel_data: Dict) -> Optional[str]:
         """Add new panel to database with optional specs"""
         try:
