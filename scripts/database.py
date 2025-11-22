@@ -57,13 +57,21 @@ class SolarPanelDB:
             logger.error(f"Failed to track scraper usage: {e}")
     
     async def get_panels_needing_price_update(self, days_old: int = 7, limit: int = 100) -> List[Dict]:
-        """Get panels that need price updates"""
+        """Get panels that need price updates (only panels with ASIN, updated more than days_old days ago)"""
         try:
-            result = self.client.table('solar_panels').select('*').order('updated_at', desc=False).limit(limit).execute()
+            from datetime import datetime, timedelta, timezone
+            
+            # Calculate cutoff date (panels updated before this date need updates)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
+            cutoff_iso = cutoff_date.isoformat()
+            
+            # Only select panels that have an ASIN (not null and not empty)
+            # and were updated more than days_old days ago
+            result = self.client.table('solar_panels').select('*').not_.is_('asin', 'null').neq('asin', '').lt('updated_at', cutoff_iso).order('updated_at', desc=False).limit(limit).execute()
             
             await self.log_script_execution(
                 'database', 'INFO', 
-                f'Retrieved {len(result.data)} panels for price update check'
+                f'Retrieved {len(result.data)} panels with ASINs needing price update (updated >{days_old} days ago)'
             )
             return result.data
         except Exception as e:
@@ -77,15 +85,15 @@ class SolarPanelDB:
         """Update panel price with history tracking"""
         try:
             # Get current price
-            current = self.client.table('solar_panels').select('price').eq('id', panel_id).execute()
+            current = self.client.table('solar_panels').select('price_usd').eq('id', panel_id).execute()
             if not current.data:
                 return False
             
-            old_price = current.data[0].get('price')
+            old_price = current.data[0].get('price_usd')
             
             # Update panel price
             self.client.table('solar_panels').update({
-                'price': new_price,
+                'price_usd': new_price,
                 'updated_at': 'now()'
             }).eq('id', panel_id).execute()
             

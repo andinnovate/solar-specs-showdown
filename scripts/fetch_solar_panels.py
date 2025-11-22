@@ -104,18 +104,22 @@ async def fetch_and_store_panel(
     """
     try:
         # Fetch product data with retry logic
-        panel_data = await retry_handler.execute_with_retry(
+        fetch_result = await retry_handler.execute_with_retry(
             scraper.fetch_product,
             asin,
             service_name="scraperapi"
         )
         
-        if not panel_data:
+        if not fetch_result or not fetch_result.get('parsed_data'):
             logger.log_script_event("WARNING", f"Failed to fetch data for ASIN: {asin}")
             return False
         
-        # Add ASIN to panel data (critical for deduplication)
-        panel_data['asin'] = asin
+        # Extract parsed data from the response structure
+        panel_data = fetch_result['parsed_data']
+        
+        # Ensure ASIN is set (critical for deduplication)
+        if not panel_data.get('asin'):
+            panel_data['asin'] = asin
         
         # Check if panel already exists by ASIN (proper deduplication)
         existing_panel = await db.get_panel_by_asin(asin)
