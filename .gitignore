@@ -25,6 +25,15 @@ dist-ssr
 database_export
 ASIN_AFFILIATE_LINK
 scraperapi_sample.py
+scraperapi_search_debug*.json
+
+# Environment and secrets (do not commit)
+.env
+.env.backup
+.env.lovable
+.env.local
+.env.*
+!.env.example
 __pycache__/
 localhost_export_*.csv
 .coverage
