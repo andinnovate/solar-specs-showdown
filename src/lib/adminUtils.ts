@@ -1,8 +1,9 @@
 /**
- * Admin utilities for user type differentiation
+ * Admin utilities for user type differentiation.
+ * Set VITE_ADMIN_EMAIL in .env for production (do not commit real values).
  */
-
-export const ADMIN_EMAIL = '***REMOVED***';
+export const ADMIN_EMAIL =
+  (import.meta.env.VITE_ADMIN_EMAIL as string | undefined) || 'admin@example.com';
 
 /**
  * Check if a user is an admin user

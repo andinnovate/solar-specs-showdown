@@ -14,7 +14,7 @@ import { FlagQueue } from "@/components/FlagQueue";
 import { ScrapeFailuresReview } from "@/components/ScrapeFailuresReview";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
-import { isAdminUser } from "@/lib/adminUtils";
+import { isAdminUser, ADMIN_EMAIL } from "@/lib/adminUtils";
 import { toast } from "sonner";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
@@ -139,7 +139,7 @@ const Admin = () => {
                     Signed in as: <span className="font-medium">{user.email}</span>
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Admin access is restricted to: ***REMOVED***
+                    Admin access is restricted to: {ADMIN_EMAIL}
                   </p>
                 </div>
 
@@ -250,33 +250,35 @@ const Admin = () => {
                   </Button>
                   
                   <div className="text-center space-y-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={async () => {
-                        setAuthLoading(true);
-                        try {
-                          const { error } = await supabase.auth.signInWithPassword({
-                            email: '***REMOVED***',
-                            password: '***REMOVED***',
-                          });
-                          if (error) throw error;
-                          toast.success('Signed in with development account!');
-                        } catch (error: unknown) {
-                          console.error('Development sign in error:', error);
-                          toast.error(`Sign in failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                        } finally {
-                          setAuthLoading(false);
-                        }
-                      }}
-                      className="w-full"
-                      disabled={authLoading}
-                    >
-                      {authLoading ? 'Signing in...' : 'Sign In with Development Account'}
-                    </Button>
-                    
+                    {/* Dev quick sign-in: only when VITE_ADMIN_DEV_EMAIL and VITE_ADMIN_DEV_PASSWORD are set in local .env (do not commit real values) */}
+                    {import.meta.env.VITE_ADMIN_DEV_EMAIL && import.meta.env.VITE_ADMIN_DEV_PASSWORD && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={async () => {
+                          setAuthLoading(true);
+                          try {
+                            const { error } = await supabase.auth.signInWithPassword({
+                              email: import.meta.env.VITE_ADMIN_DEV_EMAIL,
+                              password: import.meta.env.VITE_ADMIN_DEV_PASSWORD,
+                            });
+                            if (error) throw error;
+                            toast.success('Signed in with development account!');
+                          } catch (error: unknown) {
+                            console.error('Development sign in error:', error);
+                            toast.error(`Sign in failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                          } finally {
+                            setAuthLoading(false);
+                          }
+                        }}
+                        className="w-full"
+                        disabled={authLoading}
+                      >
+                        {authLoading ? 'Signing in...' : 'Sign In with Development Account'}
+                      </Button>
+                    )}
                     <p className="text-sm text-muted-foreground">
-                      Admin access is restricted to: ***REMOVED***
+                      Admin access is restricted to configured admin email.
                     </p>
                   </div>
                 </form>

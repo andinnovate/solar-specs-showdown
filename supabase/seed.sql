@@ -1,5 +1,6 @@
--- Create admin user for local development
--- This user will have the email ***REMOVED*** and password ***REMOVED***
+-- Create admin user for local development.
+-- Replace placeholders with your admin email and a secure password before running.
+-- Ensure the same email is set in VITE_ADMIN_EMAIL and in RLS policies (migrations) for your deployment.
 
 -- Insert the admin user into auth.users
 INSERT INTO auth.users (
@@ -25,8 +26,8 @@ INSERT INTO auth.users (
   gen_random_uuid(),
   'authenticated',
   'authenticated',
-  '***REMOVED***',
-  crypt('***REMOVED***', gen_salt('bf')),
+  'admin@example.com',
+  crypt('CHANGE_ME_SECURE_PASSWORD', gen_salt('bf')),
   NOW(),
   NULL,
   NULL,
@@ -52,11 +53,11 @@ INSERT INTO auth.identities (
   updated_at
 ) VALUES (
   gen_random_uuid(),
-  (SELECT id FROM auth.users WHERE email = '***REMOVED***'),
-  '***REMOVED***',
+  (SELECT id FROM auth.users WHERE email = 'admin@example.com'),
+  'admin@example.com',
   json_build_object(
-    'sub', (SELECT id FROM auth.users WHERE email = '***REMOVED***'),
-    'email', '***REMOVED***',
+    'sub', (SELECT id FROM auth.users WHERE email = 'admin@example.com'),
+    'email', 'admin@example.com',
     'email_verified', true,
     'phone_verified', false
   ),

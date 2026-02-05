@@ -161,11 +161,9 @@ SCRAPERAPI_KEY=your_scraperapi_key
 
 ### ScraperAPI Key
 
-Your key: `***REMOVED***`
-
-Should be set in `.env` or `.env.local`:
+Set your ScraperAPI key in `.env` or `.env.local` (do not commit real keys):
 ```bash
-SCRAPERAPI_KEY=***REMOVED***
+SCRAPERAPI_KEY=your_scraperapi_key
 ```
 
 ## 🚀 Testing Checklist

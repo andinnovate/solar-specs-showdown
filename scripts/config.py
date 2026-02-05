@@ -27,7 +27,7 @@ class Config:
     SMTP_PORT: int = int(os.getenv('SMTP_PORT', '587'))
     SMTP_USER: Optional[str] = os.getenv('SMTP_USER')
     SMTP_PASSWORD: Optional[str] = os.getenv('SMTP_PASSWORD')
-    ADMIN_EMAIL: str = os.getenv('ADMIN_EMAIL', '***REMOVED***')
+    ADMIN_EMAIL: str = os.getenv('ADMIN_EMAIL', 'admin@example.com')
     
     def __post_init__(self):
         """Validate required configuration after initialization"""
