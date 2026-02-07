@@ -8,6 +8,30 @@ type SolarPanel = Tables<'solar_panels'> & {
   pending_flags?: number;
 };
 
+const basePanel: SolarPanel = {
+  id: 'base',
+  name: 'Base Panel',
+  manufacturer: 'Base',
+  asin: null,
+  created_at: '2024-01-01',
+  updated_at: '2024-01-01',
+  description: null,
+  flag_count: null,
+  image_url: null,
+  length_cm: null,
+  manual_overrides: null,
+  missing_fields: null,
+  pending_flags: null,
+  piece_count: 1,
+  price_usd: null,
+  user_verified_overrides: null,
+  voltage: null,
+  wattage: null,
+  web_url: null,
+  weight_kg: null,
+  width_cm: null,
+};
+
 // Function extracted from Index.tsx for testing
 function calculateBounds(panels: SolarPanel[]) {
   if (panels.length === 0) {
@@ -96,6 +120,7 @@ describe('Filter Bounds Calculations', () => {
   it('should calculate correct bounds for panels with complete data', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -106,10 +131,9 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 100,
         width_cm: 50,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
       {
+        ...basePanel,
         id: '2',
         name: 'Panel 2',
         manufacturer: 'Test',
@@ -120,9 +144,7 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 150,
         width_cm: 80,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -138,6 +160,7 @@ describe('Filter Bounds Calculations', () => {
   it('should filter out null values correctly', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -148,10 +171,9 @@ describe('Filter Bounds Calculations', () => {
         length_cm: null, // null value
         width_cm: 50,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
       {
+        ...basePanel,
         id: '2',
         name: 'Panel 2',
         manufacturer: 'Test',
@@ -162,9 +184,7 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 150,
         width_cm: 80,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -180,6 +200,7 @@ describe('Filter Bounds Calculations', () => {
   it('should calculate price per watt correctly using piece_count', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -190,10 +211,9 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 100,
         width_cm: 50,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
       {
+        ...basePanel,
         id: '2',
         name: 'Panel 2',
         manufacturer: 'Test',
@@ -204,9 +224,7 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 150,
         width_cm: 80,
         piece_count: 2,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -220,6 +238,7 @@ describe('Filter Bounds Calculations', () => {
   it('should calculate watts per kg correctly', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -230,10 +249,9 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 100,
         width_cm: 50,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
       {
+        ...basePanel,
         id: '2',
         name: 'Panel 2',
         manufacturer: 'Test',
@@ -244,9 +262,7 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 150,
         width_cm: 80,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -260,6 +276,7 @@ describe('Filter Bounds Calculations', () => {
   it('should calculate watts per square meter correctly', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -270,10 +287,9 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 100, // 1m
         width_cm: 100, // 1m = 1 m²
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
       {
+        ...basePanel,
         id: '2',
         name: 'Panel 2',
         manufacturer: 'Test',
@@ -284,9 +300,7 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 200, // 2m
         width_cm: 100, // 1m = 2 m²
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -300,6 +314,7 @@ describe('Filter Bounds Calculations', () => {
   it('should handle panels with all null values by returning defaults', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -309,9 +324,7 @@ describe('Filter Bounds Calculations', () => {
         weight_kg: null,
         length_cm: null,
         width_cm: null,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -331,6 +344,7 @@ describe('Filter Bounds Calculations', () => {
   it('should handle mixed null and valid values correctly', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -341,10 +355,9 @@ describe('Filter Bounds Calculations', () => {
         length_cm: 100,
         width_cm: 50,
         piece_count: 1,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
       {
+        ...basePanel,
         id: '2',
         name: 'Panel 2',
         manufacturer: 'Test',
@@ -354,9 +367,7 @@ describe('Filter Bounds Calculations', () => {
         weight_kg: null,
         length_cm: null,
         width_cm: null,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -371,6 +382,7 @@ describe('Filter Bounds Calculations', () => {
   it('should handle price per watt calculation when wattage is null', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -380,9 +392,7 @@ describe('Filter Bounds Calculations', () => {
         weight_kg: 5,
         length_cm: 100,
         width_cm: 50,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -394,6 +404,7 @@ describe('Filter Bounds Calculations', () => {
   it('should handle watts per kg calculation when both values are present', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -403,9 +414,7 @@ describe('Filter Bounds Calculations', () => {
         weight_kg: 12.5, // 12.5kg
         length_cm: 100,
         width_cm: 50,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);
@@ -417,6 +426,7 @@ describe('Filter Bounds Calculations', () => {
   it('should handle watts per sq meter calculation correctly', () => {
     const panels: SolarPanel[] = [
       {
+        ...basePanel,
         id: '1',
         name: 'Panel 1',
         manufacturer: 'Test',
@@ -426,9 +436,7 @@ describe('Filter Bounds Calculations', () => {
         weight_kg: 5,
         length_cm: 200, // 2m
         width_cm: 100, // 1m = 2 m²
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-      } as any,
+      },
     ];
 
     const bounds = calculateBounds(panels);

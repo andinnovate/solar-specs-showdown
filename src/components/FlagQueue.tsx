@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,29 +43,54 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { cmToInches, inchesToCm, kgToLbs, lbsToKg } from "@/lib/unitConversions";
+import type { Tables, TablesUpdate, Json } from "@/integrations/supabase/types";
+
+type AdminFlagQueueRow = Tables<'admin_flag_queue'>;
+type UserFlagRow = Tables<'user_flags'>;
+type SolarPanelRow = Tables<'solar_panels'>;
+
+type EditableField = keyof Pick<
+  SolarPanelRow,
+  | 'name'
+  | 'manufacturer'
+  | 'wattage'
+  | 'voltage'
+  | 'length_cm'
+  | 'width_cm'
+  | 'weight_kg'
+  | 'price_usd'
+  | 'description'
+  | 'image_url'
+  | 'web_url'
+  | 'asin'
+  | 'piece_count'
+>;
+type EditableFieldValue = string | number | null;
+type EditableFieldMap = Partial<Record<EditableField, EditableFieldValue>>;
+type SuggestedCorrections = Record<string, Json>;
 
 interface FlagData {
   id: string;
   panel_id: string;
   user_id: string | null;  // System flags have null user_id
-  flag_type: string;  // NEW: 'user', 'system_missing_data', 'system_parse_failure', 'deletion_recommendation'
+  flag_type: string | null;  // 'user', 'system_missing_data', 'system_parse_failure', 'deletion_recommendation'
   flagged_fields: string[];
-  suggested_corrections: Record<string, any>;
-  user_comment: string;
-  status: string;
-  admin_note: string;
-  created_at: string;
-  updated_at: string;
-  resolved_at: string;
-  resolved_by: string;
-  deletion_reason?: string;
-  deletion_other_reason?: string;
+  suggested_corrections: SuggestedCorrections;
+  user_comment: string | null;
+  status: string | null;
+  admin_note: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  deletion_reason?: string | null;
+  deletion_other_reason?: string | null;
   panel_name: string;
-  manufacturer: string;
+  manufacturer: string | null;
   wattage: number | null;  // Now nullable
   price_usd: number | null;  // Now nullable
   user_email: string | null;  // System flags have null user_email
-  resolved_by_email: string;
+  resolved_by_email: string | null;
   // Current panel values for comparison
   current_name?: string;
   current_manufacturer?: string;
@@ -112,10 +137,10 @@ export const FlagQueue = () => {
     isOpen: false,
     flag: null
   });
-  const [editedCorrections, setEditedCorrections] = useState<Record<string, any>>({});
+  const [editedCorrections, setEditedCorrections] = useState<EditableFieldMap>({});
   const [fullEditMode, setFullEditMode] = useState(false);
-  const [fullPanelEdit, setFullPanelEdit] = useState<Record<string, any>>({});
-  const [originalPanelData, setOriginalPanelData] = useState<Record<string, any>>({});
+  const [fullPanelEdit, setFullPanelEdit] = useState<EditableFieldMap>({});
+  const [originalPanelData, setOriginalPanelData] = useState<SolarPanelRow | null>(null);
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('solar-panel-unit-system');
@@ -125,49 +150,80 @@ export const FlagQueue = () => {
   });
   const [selectedFlags, setSelectedFlags] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadFlags();
-  }, [flagFilter]);
-
-  const loadFlags = async () => {
+  const loadFlags = useCallback(async () => {
     try {
       setLoading(true);
       
       // Securely fetch via RPC to avoid direct view access and auth.users exposure
-      const { data, error } = await (supabase as any).rpc('admin_get_flag_queue');
+      const { data, error } = await supabase.rpc('admin_get_flag_queue');
 
       if (error) {
         throw new Error(`Failed to load flags: ${error.message}`);
       }
 
       // Apply client-side filter based on flag type
-      const filtered = (data as any[])?.filter(flag => {
+      const filtered = (data ?? []).filter(flag => {
         if (flagFilter === 'all') return true;
         if (flagFilter === 'system') return typeof flag.flag_type === 'string' && flag.flag_type.startsWith('system_');
         if (flagFilter === 'user') return ['user', 'deletion_recommendation'].includes(flag.flag_type);
         return true;
-      }) || [];
+      });
 
       // The view already includes panel_name, manufacturer, wattage, price_usd from solar_panels JOIN
       // Map those to the current_* format expected by the UI
-      const processedData = filtered.map(flag => ({
-        ...flag,
-        current_name: flag.panel_name,
-        current_manufacturer: flag.manufacturer,
-        current_wattage: flag.wattage,
-        current_price_usd: flag.price_usd,
-        // Note: voltage, length_cm, width_cm, weight_kg, description, web_url not in view
-        // These will be loaded separately if needed in loadFullPanelData
-      })) || [];
+      const processedData: FlagData[] = filtered.map((flag: AdminFlagQueueRow) => {
+        const flaggedFields = Array.isArray(flag.flagged_fields)
+          ? flag.flagged_fields.filter((field): field is string => typeof field === 'string')
+          : [];
+        const suggestedCorrections =
+          flag.suggested_corrections &&
+          typeof flag.suggested_corrections === 'object' &&
+          !Array.isArray(flag.suggested_corrections)
+            ? (flag.suggested_corrections as SuggestedCorrections)
+            : {};
 
-      setFlags(processedData as FlagData[]);
+        return {
+          id: flag.id ?? '',
+          panel_id: flag.panel_id ?? '',
+          user_id: flag.user_id ?? null,
+          flag_type: flag.flag_type ?? null,
+          flagged_fields: flaggedFields,
+          suggested_corrections: suggestedCorrections,
+          user_comment: flag.user_comment ?? null,
+          status: flag.status ?? null,
+          admin_note: flag.admin_note ?? null,
+          created_at: flag.created_at ?? null,
+          updated_at: flag.updated_at ?? null,
+          resolved_at: flag.resolved_at ?? null,
+          resolved_by: flag.resolved_by ?? null,
+          deletion_reason: flag.deletion_reason ?? null,
+          deletion_other_reason: flag.deletion_other_reason ?? null,
+          panel_name: flag.panel_name ?? 'Unknown Panel',
+          manufacturer: flag.manufacturer ?? null,
+          wattage: flag.wattage ?? null,
+          price_usd: flag.price_usd ?? null,
+          user_email: flag.user_email ?? null,
+          resolved_by_email: flag.resolved_by_email ?? null,
+          current_name: flag.panel_name ?? undefined,
+          current_manufacturer: flag.manufacturer ?? undefined,
+          current_wattage: flag.wattage ?? undefined,
+          current_price_usd: flag.price_usd ?? undefined,
+          // Note: voltage, length_cm, width_cm, weight_kg, description, web_url not in view
+        };
+      });
+
+      setFlags(processedData);
     } catch (error) {
       console.error('Error loading flags:', error);
       toast.error('Failed to load flags');
     } finally {
       setLoading(false);
     }
-  };
+  }, [flagFilter]);
+
+  useEffect(() => {
+    loadFlags();
+  }, [loadFlags]);
 
   const loadFullPanelData = async (panelId: string) => {
     try {
@@ -186,11 +242,11 @@ export const FlagQueue = () => {
         setOriginalPanelData(data);
         
         // Convert metric values to display units and populate edit state
-        const displayData: Record<string, any> = {};
-        const editableFields = ['name', 'manufacturer', 'wattage', 'voltage', 'length_cm', 'width_cm', 'weight_kg', 'price_usd', 'description', 'image_url', 'web_url', 'asin', 'piece_count'];
+        const displayData: EditableFieldMap = {};
+        const editableFields: EditableField[] = ['name', 'manufacturer', 'wattage', 'voltage', 'length_cm', 'width_cm', 'weight_kg', 'price_usd', 'description', 'image_url', 'web_url', 'asin', 'piece_count'];
         
         editableFields.forEach(field => {
-          const value = (data as any)[field];
+          const value = data[field];
           if (value !== null && value !== undefined) {
             if (field === 'length_cm' || field === 'width_cm' || field === 'weight_kg') {
               displayData[field] = convertValueForDisplay(field, value);
@@ -210,16 +266,17 @@ export const FlagQueue = () => {
     }
   };
 
-  const applyEditedCorrections = async (panelId: string, corrections: Record<string, any>) => {
+  const applyEditedCorrections = async (panelId: string, corrections: EditableFieldMap) => {
     try {
       // Convert values back to metric for storage
-      const convertedCorrections: Record<string, any> = {};
+      const convertedCorrections: TablesUpdate<'solar_panels'> = {};
       
       for (const [field, value] of Object.entries(corrections)) {
+        const typedField = field as EditableField;
         if (typeof value === 'number') {
-          convertedCorrections[field] = convertValueForStorage(field, value.toString());
+          convertedCorrections[typedField] = convertValueForStorage(typedField, value.toString());
         } else {
-          convertedCorrections[field] = value;
+          convertedCorrections[typedField] = value ?? null;
         }
       }
 
@@ -242,26 +299,28 @@ export const FlagQueue = () => {
     }
   };
 
-  const applyFullPanelEdit = async (panelId: string, edits: Record<string, any>) => {
+  const applyFullPanelEdit = async (panelId: string, edits: EditableFieldMap) => {
     try {
       // Convert values back to metric for storage
-      const convertedEdits: Record<string, any> = {};
+      const convertedEdits: TablesUpdate<'solar_panels'> = {};
       
       for (const [field, value] of Object.entries(edits)) {
+        const typedField = field as EditableField;
         // Skip empty values (keep existing)
         if (value === '' || value === null) {
           continue;
         }
         
-        if (field === 'length_cm' || field === 'width_cm' || field === 'weight_kg') {
+        if (typedField === 'length_cm' || typedField === 'width_cm' || typedField === 'weight_kg') {
           // Convert from display unit to metric
-          convertedEdits[field] = convertValueForStorage(field, value.toString());
-        } else if (field === 'wattage' || field === 'voltage' || field === 'price_usd' || field === 'piece_count') {
+          convertedEdits[typedField] = convertValueForStorage(typedField, value.toString());
+        } else if (typedField === 'wattage' || typedField === 'voltage' || typedField === 'price_usd' || typedField === 'piece_count') {
           // Numeric fields
-          convertedEdits[field] = parseFloat(value) || null;
+          const parsed = parseFloat(String(value));
+          convertedEdits[typedField] = Number.isNaN(parsed) ? null : parsed;
         } else {
           // String fields
-          convertedEdits[field] = value || null;
+          convertedEdits[typedField] = value || null;
         }
       }
 
@@ -270,8 +329,8 @@ export const FlagQueue = () => {
       const editableFields = ['name', 'manufacturer', 'wattage', 'voltage', 'length_cm', 'width_cm', 'weight_kg', 'price_usd', 'description', 'image_url', 'web_url', 'asin', 'piece_count'];
       
       editableFields.forEach(field => {
-        const originalValue = (originalPanelData as any)[field];
-        const newValue = convertedEdits[field];
+        const originalValue = originalPanelData ? originalPanelData[field as EditableField] : null;
+        const newValue = convertedEdits[field as EditableField];
         
         // Compare values properly (handle null/undefined)
         if (originalValue !== newValue && newValue !== undefined) {
@@ -286,7 +345,9 @@ export const FlagQueue = () => {
         .eq('id', panelId)
         .single();
 
-      const existingOverrides = ((currentPanel as any)?.manual_overrides as string[]) || [];
+      const existingOverrides = Array.isArray(currentPanel?.manual_overrides)
+        ? currentPanel?.manual_overrides.filter((field): field is string => typeof field === 'string')
+        : [];
       const newOverrides = Array.from(new Set([...existingOverrides, ...changedFields]));
 
       // Apply the edits with manual_overrides
@@ -325,7 +386,7 @@ export const FlagQueue = () => {
 
       // Get the flag data to check if it's a deletion recommendation
       const { data: flagData, error: flagError } = await supabase
-        .from('user_flags' as any)
+        .from('user_flags')
         .select('flag_type, panel_id')
         .eq('id', flagId)
         .single();
@@ -336,7 +397,7 @@ export const FlagQueue = () => {
 
       // Update the flag status
       const { error } = await supabase
-        .from('user_flags' as any)
+        .from('user_flags')
         .update({
           status: action === 'approve' ? 'approved' : 'rejected',
           admin_note: note || null,
@@ -350,11 +411,11 @@ export const FlagQueue = () => {
       }
 
       // If approving a deletion recommendation, delete the panel
-      if (action === 'approve' && (flagData as any).flag_type === 'deletion_recommendation') {
+      if (action === 'approve' && flagData?.flag_type === 'deletion_recommendation') {
         const { error: deleteError } = await supabase
           .from('solar_panels')
           .delete()
-          .eq('id', (flagData as any).panel_id);
+          .eq('id', flagData.panel_id);
 
         if (deleteError) {
           console.error('Failed to delete panel:', deleteError);
@@ -387,7 +448,7 @@ export const FlagQueue = () => {
       
       // Simply delete the flag - no changes applied, panel remains unchanged
       const { error } = await supabase
-        .from('user_flags' as any)
+        .from('user_flags')
         .delete()
         .eq('id', flag.id);
 
@@ -414,7 +475,7 @@ export const FlagQueue = () => {
     try {
       // Delete the flag
       const { error } = await supabase
-        .from('user_flags' as any)
+        .from('user_flags')
         .delete()
         .eq('id', flag.id);
 
@@ -444,7 +505,7 @@ export const FlagQueue = () => {
           
           // Delete raw_scraper_data entries for this ASIN
           const { error: rawDataError } = await supabase
-            .from('raw_scraper_data' as any)
+            .from('raw_scraper_data')
             .delete()
             .eq('asin', asin);
 
@@ -456,7 +517,7 @@ export const FlagQueue = () => {
           // Log to filtered_asins to prevent re-ingestion
           const productName = flag.panel_name || `${flag.manufacturer || 'Unknown'} Panel`;
           const { error: filterError } = await supabase
-            .from('filtered_asins' as any)
+            .from('filtered_asins')
             .insert({
               asin: asin,
               filter_stage: 'ingest',
@@ -528,7 +589,7 @@ export const FlagQueue = () => {
       for (const flag of selectedFlagObjects) {
         // Apply suggested corrections if they exist
         if (Object.keys(flag.suggested_corrections).length > 0) {
-          const corrections: Record<string, any> = {};
+          const corrections: TablesUpdate<'solar_panels'> = {};
           
           for (const [field, value] of Object.entries(flag.suggested_corrections)) {
             if (typeof value === 'number') {
@@ -548,7 +609,7 @@ export const FlagQueue = () => {
 
         // Approve the flag
         await supabase
-          .from('user_flags' as any)
+          .from('user_flags')
           .update({
             status: 'approved',
             admin_note: 'Bulk approved with changes applied',
@@ -577,7 +638,7 @@ export const FlagQueue = () => {
       
       for (const flagId of selectedFlags) {
         await supabase
-          .from('user_flags' as any)
+          .from('user_flags')
           .delete()
           .eq('id', flagId);
       }
@@ -615,7 +676,7 @@ export const FlagQueue = () => {
 
         // Delete the flag
         await supabase
-          .from('user_flags' as any)
+          .from('user_flags')
           .delete()
           .eq('id', flag.id);
 
@@ -635,14 +696,14 @@ export const FlagQueue = () => {
             
             // Delete raw_scraper_data entries
             await supabase
-              .from('raw_scraper_data' as any)
+              .from('raw_scraper_data')
               .delete()
               .eq('asin', asin);
 
             // Log to filtered_asins
             const productName = flag.panel_name || `${flag.manufacturer || 'Unknown'} Panel`;
             await supabase
-              .from('filtered_asins' as any)
+              .from('filtered_asins')
               .insert({
                 asin: asin,
                 filter_stage: 'ingest',
@@ -694,7 +755,7 @@ export const FlagQueue = () => {
   };
 
   const getCurrentValue = (flag: FlagData, field: string) => {
-    const fieldMap: Record<string, string> = {
+    const fieldMap: Record<string, keyof FlagData> = {
       name: 'current_name',
       manufacturer: 'current_manufacturer',
       wattage: 'current_wattage',
@@ -708,7 +769,7 @@ export const FlagQueue = () => {
     };
     
     const currentField = fieldMap[field];
-    return currentField ? (flag as any)[currentField] : null;
+    return currentField ? flag[currentField] : null;
   };
 
   const extractASIN = (url: string) => {
@@ -730,20 +791,20 @@ export const FlagQueue = () => {
     return null;
   };
 
-  const formatValueForDisplay = (field: string, value: any): string => {
+  const formatValueForDisplay = (field: string, value: string | number | null | undefined): string => {
     if (value === null || value === undefined) return '';
     
     switch (field) {
       case 'length_cm':
       case 'width_cm':
         if (unitSystem === 'imperial') {
-          return `in (${cmToInches(parseFloat(value))} in)`;
+          return `in (${cmToInches(parseFloat(String(value)))} in)`;
         }
         return `cm (${value})`;
       
       case 'weight_kg':
         if (unitSystem === 'imperial') {
-          return `lbs (${kgToLbs(parseFloat(value))} lbs)`;
+          return `lbs (${kgToLbs(parseFloat(String(value)))} lbs)`;
         }
         return `kg (${value})`;
       
@@ -752,9 +813,9 @@ export const FlagQueue = () => {
     }
   };
 
-  const convertValueForDisplay = (field: string, value: any): number => {
+  const convertValueForDisplay = (field: string, value: string | number | null | undefined): number => {
     if (value === null || value === undefined) return 0;
-    const numValue = parseFloat(value);
+    const numValue = parseFloat(String(value));
     
     switch (field) {
       case 'length_cm':

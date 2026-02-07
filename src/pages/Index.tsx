@@ -161,14 +161,23 @@ const Index = () => {
 
       if (error) throw error;
       // Transform data to match SolarPanel interface, including piece_count default
-      const transformedData = (data || []).map(panel => ({
-        ...panel,
-        piece_count: panel.piece_count ?? 1,
-        missing_fields: panel.missing_fields as string[] | null,
-        user_verified_overrides: (panel as any).user_verified_overrides as string[] | null,
-        flag_count: (panel as any).flag_count ?? 0,
-        pending_flags: (panel as any).pending_flags ?? 0
-      }));
+      const transformedData = (data || []).map(panel => {
+        const missingFields = Array.isArray(panel.missing_fields)
+          ? (panel.missing_fields as string[])
+          : null;
+        const verifiedOverrides = Array.isArray(panel.user_verified_overrides)
+          ? (panel.user_verified_overrides as string[])
+          : null;
+
+        return {
+          ...panel,
+          piece_count: panel.piece_count ?? 1,
+          missing_fields: missingFields,
+          user_verified_overrides: verifiedOverrides,
+          flag_count: panel.flag_count ?? 0,
+          pending_flags: panel.pending_flags ?? 0
+        };
+      });
       setPanels(transformedData);
       
       // Set initial filter bounds based on transformed data (matching bounds logic)

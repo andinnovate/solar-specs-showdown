@@ -215,9 +215,19 @@ class TestASINRetryLogic:
         assert "Already exists in database" in call_args[0][1]
     
     @pytest.mark.asyncio
-    async def test_wattage_filtering(self, mock_asin_manager, mock_scraper, 
+    @patch('scripts.ingest_staged_asins.check_recent_raw_data')
+    @patch('scripts.ingest_staged_asins.create_client')
+    async def test_wattage_filtering(self, mock_create_client, mock_check_recent, mock_asin_manager, mock_scraper, 
                                     mock_db, mock_retry_handler, mock_logger):
         """Test that low wattage panels are filtered out."""
+        # Setup: Mock filtered_asins check to return empty
+        mock_client = MagicMock()
+        mock_client.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_create_client.return_value = mock_client
+
+        # Setup: No recent raw data (bypass cache)
+        mock_check_recent.return_value = None
+
         # Setup: No existing panel, low wattage product
         mock_db.get_panel_by_asin = AsyncMock(return_value=None)  # No existing panel
         product_data = {

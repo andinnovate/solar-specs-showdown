@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,15 +25,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import type { Json } from "@/integrations/supabase/types";
 
 interface RawScraperData {
   id: string;
   asin: string;
   panel_id: string | null;
-  scraper_response: any;
+  scraper_response: Json;
   scraper_version: string;
   response_size_bytes: number | null;
-  processing_metadata: any;
+  processing_metadata: Json | null;
   created_at: string;
   updated_at: string;
 }
@@ -42,15 +43,91 @@ interface ScrapeFailure {
   id: string;
   asin: string;
   panel_id: string | null;
-  scraper_response: any;
+  scraper_response: Json;
   scraper_version: string;
   response_size_bytes: number | null;
-  processing_metadata: any;
+  processing_metadata: Json | null;
   created_at: string;
   updated_at: string;
   failure_reason?: string;
-  error_details?: any;
+  error_details?: Record<string, unknown>;
 }
+
+const determineFailureReason = (item: RawScraperData): string | undefined => {
+  // Check for parsing failures in processing_metadata
+  if (item.processing_metadata?.parsing_failures && Array.isArray(item.processing_metadata.parsing_failures)) {
+    const failures = item.processing_metadata.parsing_failures;
+    if (failures.length > 0) {
+      return `Parsing Failures: ${failures.join(', ')}`;
+    }
+  }
+
+  // Check if panel_id is null (failed to create panel)
+  if (!item.panel_id) {
+    return 'Failed to create panel';
+  }
+
+  // Check scraper_response for error indicators
+  if (item.scraper_response) {
+    const response = item.scraper_response;
+    
+    // Check for common error patterns
+    if (response.error) {
+      return `ScraperAPI Error: ${response.error}`;
+    }
+    
+    if (response.status === 'error') {
+      return `ScraperAPI Status Error: ${response.message || 'Unknown error'}`;
+    }
+    
+    if (response.success === false) {
+      return `ScraperAPI Failed: ${response.message || 'Request failed'}`;
+    }
+    
+    // Check if critical data is missing
+    if (!response.title && !response.name && !response.product_name) {
+      return 'Missing product name/title';
+    }
+    
+    if (!response.price && !response.price_usd) {
+      return 'Missing price information';
+    }
+  }
+
+  return undefined;
+};
+
+const extractErrorDetails = (item: RawScraperData): Record<string, unknown> => {
+  const details: Record<string, unknown> = {
+    processing_metadata: item.processing_metadata
+  };
+
+  // Extract parsing failures if they exist
+  if (item.processing_metadata?.parsing_failures) {
+    details.parsing_failures = item.processing_metadata.parsing_failures;
+    details.parsing_failure_count = item.processing_metadata.parsing_failures.length;
+  }
+
+  if (!item.scraper_response) return details;
+  
+  const response = item.scraper_response as Record<string, unknown>;
+  
+  // Extract error-related information
+  return {
+    ...details,
+    error: response.error,
+    status: response.status,
+    message: response.message,
+    success: response.success,
+    has_title: !!(response.title || response.name || response.product_name),
+    has_price: !!(response.price || response.price_usd),
+    has_description: !!response.description,
+    response_keys: Object.keys(response || {}),
+    // Add specific parsing failure details
+    parsing_failures: item.processing_metadata?.parsing_failures || [],
+    parsing_failure_count: item.processing_metadata?.parsing_failures?.length || 0
+  };
+};
 
 export const ScrapeFailuresReview = () => {
   const [failures, setFailures] = useState<ScrapeFailure[]>([]);
@@ -62,11 +139,7 @@ export const ScrapeFailuresReview = () => {
     failure: null
   });
 
-  useEffect(() => {
-    loadFailures();
-  }, []);
-
-  const loadFailures = async () => {
+  const loadFailures = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -75,7 +148,7 @@ export const ScrapeFailuresReview = () => {
       // We'll look for entries where panel_id is null (failed to create panel) 
       // or where the processing_metadata contains parsing_failures
       const { data, error } = await supabase
-        .from('raw_scraper_data' as any)
+        .from('raw_scraper_data')
         .select('*')
         .or('panel_id.is.null,processing_metadata->parsing_failures.not.is.null')
         .order('created_at', { ascending: false })
@@ -103,83 +176,11 @@ export const ScrapeFailuresReview = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const determineFailureReason = (item: RawScraperData): string | undefined => {
-    // Check for parsing failures in processing_metadata
-    if (item.processing_metadata?.parsing_failures && Array.isArray(item.processing_metadata.parsing_failures)) {
-      const failures = item.processing_metadata.parsing_failures;
-      if (failures.length > 0) {
-        return `Parsing Failures: ${failures.join(', ')}`;
-      }
-    }
-
-    // Check if panel_id is null (failed to create panel)
-    if (!item.panel_id) {
-      return 'Failed to create panel';
-    }
-
-    // Check scraper_response for error indicators
-    if (item.scraper_response) {
-      const response = item.scraper_response;
-      
-      // Check for common error patterns
-      if (response.error) {
-        return `ScraperAPI Error: ${response.error}`;
-      }
-      
-      if (response.status === 'error') {
-        return `ScraperAPI Status Error: ${response.message || 'Unknown error'}`;
-      }
-      
-      if (response.success === false) {
-        return `ScraperAPI Failed: ${response.message || 'Request failed'}`;
-      }
-      
-      // Check if critical data is missing
-      if (!response.title && !response.name && !response.product_name) {
-        return 'Missing product name/title';
-      }
-      
-      if (!response.price && !response.price_usd) {
-        return 'Missing price information';
-      }
-    }
-
-    return undefined;
-  };
-
-  const extractErrorDetails = (item: RawScraperData): any => {
-    const details: any = {
-      processing_metadata: item.processing_metadata
-    };
-
-    // Extract parsing failures if they exist
-    if (item.processing_metadata?.parsing_failures) {
-      details.parsing_failures = item.processing_metadata.parsing_failures;
-      details.parsing_failure_count = item.processing_metadata.parsing_failures.length;
-    }
-
-    if (!item.scraper_response) return details;
-    
-    const response = item.scraper_response;
-    
-    // Extract error-related information
-    return {
-      ...details,
-      error: response.error,
-      status: response.status,
-      message: response.message,
-      success: response.success,
-      has_title: !!(response.title || response.name || response.product_name),
-      has_price: !!(response.price || response.price_usd),
-      has_description: !!response.description,
-      response_keys: Object.keys(response || {}),
-      // Add specific parsing failure details
-      parsing_failures: item.processing_metadata?.parsing_failures || [],
-      parsing_failure_count: item.processing_metadata?.parsing_failures?.length || 0
-    };
-  };
+  useEffect(() => {
+    loadFailures();
+  }, [loadFailures]);
 
   const toggleExpanded = (id: string) => {
     const newExpanded = new Set(expandedItems);
@@ -206,7 +207,7 @@ export const ScrapeFailuresReview = () => {
 
       // 1. Delete the raw_scraper_data entry
       const { error } = await supabase
-        .from('raw_scraper_data' as any)
+        .from('raw_scraper_data')
         .delete()
         .eq('id', failure.id);
 
@@ -229,7 +230,7 @@ export const ScrapeFailuresReview = () => {
       // 3. Delete any admin flags associated with this panel or ASIN
       if (failure.panel_id) {
         const { error: flagError } = await supabase
-          .from('user_flags' as any)
+          .from('user_flags')
           .delete()
           .eq('panel_id', failure.panel_id);
 
@@ -244,7 +245,7 @@ export const ScrapeFailuresReview = () => {
         const webUrl = failure.scraper_response?.url || failure.scraper_response?.product_url;
         
         const { error: filterError } = await supabase
-          .from('filtered_asins' as any)
+          .from('filtered_asins')
           .insert({
             asin: asin,
             filter_stage: 'ingest',
@@ -281,7 +282,7 @@ export const ScrapeFailuresReview = () => {
     setDeleteDialog({ isOpen: false, failure: null });
   };
 
-  const formatJson = (obj: any): string => {
+  const formatJson = (obj: unknown): string => {
     return JSON.stringify(obj, null, 2);
   };
 

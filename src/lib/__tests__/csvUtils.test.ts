@@ -10,7 +10,7 @@ import {
   getUnitOptionsForField,
   type FieldMapping,
 } from '../csvUtils';
-import type { CSVRow } from '../csvUtils';
+import type { CSVRow, SolarPanelRow, SolarPanelInsert } from '../csvUtils';
 
 describe('csvUtils', () => {
   describe('parseCSV', () => {
@@ -208,34 +208,74 @@ describe('csvUtils', () => {
   });
 
   describe('findMatchingPanel', () => {
-    const existingPanels = [
-      { id: '1', name: 'Panel A', manufacturer: 'Corp A', wattage: 100, price_usd: 50 },
-      { id: '2', name: 'Panel B', manufacturer: 'Corp B', wattage: 200, price_usd: 100 },
-    ] as any[];
+    const basePanel: SolarPanelRow = {
+      id: 'base',
+      name: 'Base Panel',
+      manufacturer: 'Base',
+      asin: null,
+      created_at: '2024-01-01',
+      updated_at: '2024-01-01',
+      description: null,
+      flag_count: null,
+      image_url: null,
+      length_cm: null,
+      manual_overrides: null,
+      missing_fields: null,
+      pending_flags: null,
+      piece_count: 1,
+      price_usd: null,
+      user_verified_overrides: null,
+      voltage: null,
+      wattage: null,
+      web_url: null,
+      weight_kg: null,
+      width_cm: null,
+    };
+
+    const existingPanels: SolarPanelRow[] = [
+      { ...basePanel, id: '1', name: 'Panel A', manufacturer: 'Corp A', wattage: 100, price_usd: 50 },
+      { ...basePanel, id: '2', name: 'Panel B', manufacturer: 'Corp B', wattage: 200, price_usd: 100 },
+    ];
 
     it('should find exact match by name and manufacturer', () => {
-      const processed = { name: 'Panel A', manufacturer: 'Corp A', wattage: 100 };
+      const processed: Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> = {
+        name: 'Panel A',
+        manufacturer: 'Corp A',
+        wattage: 100
+      };
       const match = findMatchingPanel(processed, existingPanels);
       
       expect(match).toEqual(existingPanels[0]);
     });
 
     it('should find fuzzy match by name only', () => {
-      const processed = { name: 'Panel A', manufacturer: 'Different Corp', wattage: 100 };
+      const processed: Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> = {
+        name: 'Panel A',
+        manufacturer: 'Different Corp',
+        wattage: 100
+      };
       const match = findMatchingPanel(processed, existingPanels);
       
       expect(match).toEqual(existingPanels[0]);
     });
 
     it('should return undefined for no match', () => {
-      const processed = { name: 'Panel C', manufacturer: 'Corp C', wattage: 300 };
+      const processed: Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> = {
+        name: 'Panel C',
+        manufacturer: 'Corp C',
+        wattage: 300
+      };
       const match = findMatchingPanel(processed, existingPanels);
       
       expect(match).toBeUndefined();
     });
 
     it('should be case insensitive', () => {
-      const processed = { name: 'panel a', manufacturer: 'corp a', wattage: 100 };
+      const processed: Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> = {
+        name: 'panel a',
+        manufacturer: 'corp a',
+        wattage: 100
+      };
       const match = findMatchingPanel(processed, existingPanels);
       
       expect(match).toEqual(existingPanels[0]);
@@ -244,8 +284,32 @@ describe('csvUtils', () => {
 
   describe('calculateChanges', () => {
     it('should calculate differences between existing and updated data', () => {
-      const existing = { id: '1', name: 'Panel A', wattage: 100, price_usd: 50 } as any;
-      const updated = { name: 'Panel B', wattage: 200, price_usd: 50 };
+      const basePanel: SolarPanelRow = {
+        id: 'base',
+        name: 'Base Panel',
+        manufacturer: 'Base',
+        asin: null,
+        created_at: '2024-01-01',
+        updated_at: '2024-01-01',
+        description: null,
+        flag_count: null,
+        image_url: null,
+        length_cm: null,
+        manual_overrides: null,
+        missing_fields: null,
+        pending_flags: null,
+        piece_count: 1,
+        price_usd: null,
+        user_verified_overrides: null,
+        voltage: null,
+        wattage: null,
+        web_url: null,
+        weight_kg: null,
+        width_cm: null,
+      };
+
+      const existing: SolarPanelRow = { ...basePanel, id: '1', name: 'Panel A', manufacturer: 'Corp A', wattage: 100, price_usd: 50 };
+      const updated: Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> = { name: 'Panel B', manufacturer: 'Corp A', wattage: 200, price_usd: 50 };
 
       const changes = calculateChanges(existing, updated);
 
@@ -253,8 +317,32 @@ describe('csvUtils', () => {
     });
 
     it('should return empty object when no changes', () => {
-      const existing = { id: '1', name: 'Panel A', wattage: 100 } as any;
-      const updated = { name: 'Panel A', wattage: 100 };
+      const basePanel: SolarPanelRow = {
+        id: 'base',
+        name: 'Base Panel',
+        manufacturer: 'Base',
+        asin: null,
+        created_at: '2024-01-01',
+        updated_at: '2024-01-01',
+        description: null,
+        flag_count: null,
+        image_url: null,
+        length_cm: null,
+        manual_overrides: null,
+        missing_fields: null,
+        pending_flags: null,
+        piece_count: 1,
+        price_usd: null,
+        user_verified_overrides: null,
+        voltage: null,
+        wattage: null,
+        web_url: null,
+        weight_kg: null,
+        width_cm: null,
+      };
+
+      const existing: SolarPanelRow = { ...basePanel, id: '1', name: 'Panel A', manufacturer: 'Corp A', wattage: 100 };
+      const updated: Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> = { name: 'Panel A', manufacturer: 'Corp A', wattage: 100 };
 
       const changes = calculateChanges(existing, updated);
 
@@ -262,18 +350,43 @@ describe('csvUtils', () => {
     });
 
     it('should ignore unchanged fields', () => {
-      const existing = { 
+      const basePanel: SolarPanelRow = {
+        id: 'base',
+        name: 'Base Panel',
+        manufacturer: 'Base',
+        asin: null,
+        created_at: '2024-01-01',
+        updated_at: '2024-01-01',
+        description: null,
+        flag_count: null,
+        image_url: null,
+        length_cm: null,
+        manual_overrides: null,
+        missing_fields: null,
+        pending_flags: null,
+        piece_count: 1,
+        price_usd: null,
+        user_verified_overrides: null,
+        voltage: null,
+        wattage: null,
+        web_url: null,
+        weight_kg: null,
+        width_cm: null,
+      };
+
+      const existing: SolarPanelRow = { 
+        ...basePanel,
         id: '1', 
         name: 'Panel A', 
         wattage: 100, 
         price_usd: 50,
         manufacturer: 'Corp A'
-      } as any;
-      const updated = { 
+      };
+      const updated: Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> = { 
         name: 'Panel A', 
+        manufacturer: 'Corp A',
         wattage: 200, 
-        price_usd: 50,
-        manufacturer: 'Corp A'
+        price_usd: 50
       };
 
       const changes = calculateChanges(existing, updated);
@@ -328,4 +441,3 @@ describe('csvUtils', () => {
     });
   });
 });
-

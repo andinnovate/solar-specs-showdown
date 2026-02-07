@@ -9,7 +9,9 @@ describe('utils', () => {
     });
 
     it('should handle conditional classes', () => {
-      const result = cn('foo', true && 'bar', false && 'baz');
+      const showBar = true;
+      const showBaz = false;
+      const result = cn('foo', showBar && 'bar', showBaz && 'baz');
       expect(result).toBe('foo bar');
     });
 
@@ -44,4 +46,3 @@ describe('utils', () => {
     });
   });
 });
-

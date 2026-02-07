@@ -19,10 +19,11 @@ import { Trash2, Edit2, Save, X, Lock, AlertCircle, Search, ArrowLeftRight, Chev
 import { toast } from "sonner";
 
 type SolarPanel = Tables<"solar_panels">;
+type UserFlag = Tables<"user_flags">;
 
-// Extended type to include manual_overrides which may not be in generated types yet
+// Extended type to include manual_overrides as a string array for UI use
 type SolarPanelWithOverrides = SolarPanel & {
-  manual_overrides?: string[];
+  manual_overrides?: string[] | null;
 };
 
 // Minimal panel type for list view
@@ -34,6 +35,11 @@ type MinimalPanel = {
   web_url: string | null;
   created_at: string;
   updated_at: string;
+};
+
+const parseStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
 };
 
 export const DatabaseManager = () => {
@@ -109,9 +115,13 @@ export const DatabaseManager = () => {
       if (error) throw error;
       
       if (data) {
+        const overrides = parseStringArray(data.manual_overrides);
         setFullPanelData(prev => ({
           ...prev,
-          [panelId]: data as SolarPanelWithOverrides
+          [panelId]: {
+            ...(data as SolarPanelWithOverrides),
+            manual_overrides: overrides
+          }
         }));
       }
     } catch (error) {
@@ -168,7 +178,7 @@ export const DatabaseManager = () => {
     try {
       // Get all pending flags for this panel
       const { data: flags, error: flagsError } = await supabase
-        .from('user_flags' as any)
+        .from('user_flags')
         .select('id, flag_type, flagged_fields')
         .eq('panel_id', panelId)
         .eq('status', 'pending');
@@ -189,7 +199,7 @@ export const DatabaseManager = () => {
       }
 
       // Use current panel data as the final state (already includes the updates)
-      const finalPanelData = currentPanel;
+      const finalPanelData = currentPanel as SolarPanelWithOverrides;
 
       // Map flagged field names to database fields
       const fieldMapping: Record<string, string[]> = {
@@ -210,9 +220,11 @@ export const DatabaseManager = () => {
 
       // Check each flag
       for (const flag of flags) {
-        const flagData = flag as any;
-        const flaggedFields = (flagData.flagged_fields as string[]) || [];
-        const flagType = flagData.flag_type as string;
+        const flagData = flag as Pick<UserFlag, 'id' | 'flag_type' | 'flagged_fields'>;
+        const flaggedFields = Array.isArray(flagData.flagged_fields)
+          ? flagData.flagged_fields.filter((field): field is string => typeof field === 'string')
+          : [];
+        const flagType = flagData.flag_type ?? '';
 
         // For system_missing_data flags, check if all missing fields are now present
         if (flagType === 'system_missing_data' || flagType === 'system_parse_failure') {
@@ -223,7 +235,7 @@ export const DatabaseManager = () => {
             
             // Check if all required fields are present and not null
             const fieldResolved = dbFields.every(dbField => {
-              const value = (finalPanelData as any)[dbField];
+              const value = finalPanelData[dbField as keyof SolarPanelWithOverrides];
               return value !== null && value !== undefined && value !== '';
             });
 
@@ -236,7 +248,7 @@ export const DatabaseManager = () => {
           // If all missing fields are resolved, auto-approve the flag
           if (allResolved) {
             await supabase
-              .from('user_flags' as any)
+              .from('user_flags')
               .update({
                 status: 'approved',
                 admin_note: 'Automatically approved: Missing data resolved via admin panel edit',
@@ -305,7 +317,7 @@ export const DatabaseManager = () => {
         try {
           // Update raw_scraper_data entries for this panel
           const { error: rawDataError } = await supabase
-            .from('raw_scraper_data' as any)
+            .from('raw_scraper_data')
             .update({ asin: newAsin })
             .eq('asin', oldAsin);
 
@@ -316,7 +328,7 @@ export const DatabaseManager = () => {
 
           // Update filtered_asins entries
           const { error: filteredError } = await supabase
-            .from('filtered_asins' as any)
+            .from('filtered_asins')
             .update({ asin: newAsin })
             .eq('asin', oldAsin);
 
@@ -394,7 +406,7 @@ export const DatabaseManager = () => {
           
           // Delete raw_scraper_data entries that match this ASIN and have no panel_id
           const { error: rawDataError } = await supabase
-            .from("raw_scraper_data" as any)
+            .from("raw_scraper_data")
             .delete()
             .eq("asin", asin)
             .is("panel_id", null);
@@ -408,7 +420,7 @@ export const DatabaseManager = () => {
           try {
             const productName = panel.name || `${panel.manufacturer || 'Unknown'} Panel`;
             const { error: filterError } = await supabase
-              .from("filtered_asins" as any)
+              .from("filtered_asins")
               .insert({
                 asin: asin,
                 filter_stage: 'ingest',
@@ -494,23 +506,18 @@ export const DatabaseManager = () => {
             const isEditing = editingId === panel.id;
             const fullPanel = fullPanelData[panel.id];
             const isLoadingDetails = loadingDetails.has(panel.id);
-            const currentPanel = isEditing ? editedPanel : (fullPanel || panel);
-            const displayPanel = fullPanel || panel;
-
-            const manualOverrides = (displayPanel as SolarPanelWithOverrides).manual_overrides || [];
+            const editPanel = isEditing ? editedPanel : fullPanel;
+            const manualOverrides = parseStringArray(fullPanel?.manual_overrides);
             const hasManualOverride = (field: string) => manualOverrides.includes(field);
 
             const swapLengthWidth = () => {
               if (!isEditing) return;
-              
-              const currentLength = (currentPanel as any).length_cm;
-              const currentWidth = (currentPanel as any).width_cm;
-              
-              setEditedPanel({
-                ...editedPanel,
-                length_cm: currentWidth,
-                width_cm: currentLength,
-              });
+
+              setEditedPanel(prev => ({
+                ...prev,
+                length_cm: prev.width_cm ?? null,
+                width_cm: prev.length_cm ?? null,
+              }));
             };
 
             return (
@@ -652,13 +659,13 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={(currentPanel as any).manufacturer || ""}
+                            value={editPanel?.manufacturer ?? ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, manufacturer: e.target.value })
                             }
                           />
                         ) : (
-                          <p className="text-sm">{(displayPanel as any).manufacturer}</p>
+                          <p className="text-sm">{fullPanel.manufacturer}</p>
                         )}
                             </div>
 
@@ -675,16 +682,16 @@ export const DatabaseManager = () => {
                                 {isEditing ? (
                                   <Input
                                     type="number"
-                                    value={(currentPanel as any).wattage || ""}
+                                    value={editPanel?.wattage ?? ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
-                                  wattage: parseInt(e.target.value),
+                                  wattage: e.target.value === '' ? null : parseInt(e.target.value, 10),
                                 })
                               }
                             />
                           ) : (
-                            <p className="text-sm">{(displayPanel as any).wattage ? `${(displayPanel as any).wattage} W` : 'N/A'}</p>
+                            <p className="text-sm">{fullPanel.wattage ? `${fullPanel.wattage} W` : 'N/A'}</p>
                           )}
                         </div>
                         <div className="space-y-2">
@@ -700,18 +707,18 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={(currentPanel as any).voltage || ""}
+                              value={editPanel?.voltage ?? ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
-                                  voltage: parseFloat(e.target.value),
+                                  voltage: e.target.value === '' ? null : parseFloat(e.target.value),
                                 })
                               }
                               placeholder="Optional"
                             />
                           ) : (
                             <p className="text-sm">
-                              {(displayPanel as any).voltage ? `${(displayPanel as any).voltage} V` : "Not set"}
+                              {fullPanel.voltage ? `${fullPanel.voltage} V` : "Not set"}
                             </p>
                           )}
                         </div>
@@ -728,16 +735,16 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               min="1"
-                              value={(currentPanel as any).piece_count || 1}
+                              value={editPanel?.piece_count ?? 1}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
-                                  piece_count: parseInt(e.target.value),
+                                  piece_count: e.target.value === '' ? null : parseInt(e.target.value, 10),
                                 })
                               }
                             />
                           ) : (
-                            <p className="text-sm">{(displayPanel as any).piece_count || 1} {((displayPanel as any).piece_count || 1) === 1 ? 'piece' : 'pieces'}</p>
+                            <p className="text-sm">{fullPanel.piece_count || 1} {(fullPanel.piece_count || 1) === 1 ? 'piece' : 'pieces'}</p>
                           )}
                         </div>
                       </div>
@@ -755,16 +762,16 @@ export const DatabaseManager = () => {
                           <Input
                             type="number"
                             step="0.01"
-                            value={(currentPanel as any).price_usd || ""}
+                            value={editPanel?.price_usd ?? ""}
                             onChange={(e) =>
                               setEditedPanel({
                                 ...editedPanel,
-                                price_usd: parseFloat(e.target.value),
+                                price_usd: e.target.value === '' ? null : parseFloat(e.target.value),
                               })
                             }
                           />
                         ) : (
-                          <p className="text-sm">${(displayPanel as any).price_usd ? (displayPanel as any).price_usd.toFixed(2) : 'N/A'}</p>
+                          <p className="text-sm">${fullPanel.price_usd ? fullPanel.price_usd.toFixed(2) : 'N/A'}</p>
                         )}
                       </div>
 
@@ -782,16 +789,16 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={(currentPanel as any).length_cm || ""}
+                              value={editPanel?.length_cm ?? ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
-                                  length_cm: parseFloat(e.target.value),
+                                  length_cm: e.target.value === '' ? null : parseFloat(e.target.value),
                                 })
                               }
                             />
                           ) : (
-                            <p className="text-sm">{(displayPanel as any).length_cm ?? 'N/A'}</p>
+                            <p className="text-sm">{fullPanel.length_cm ?? 'N/A'}</p>
                           )}
                         </div>
                         <div className="space-y-2">
@@ -807,16 +814,16 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={(currentPanel as any).width_cm || ""}
+                              value={editPanel?.width_cm ?? ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
-                                  width_cm: parseFloat(e.target.value),
+                                  width_cm: e.target.value === '' ? null : parseFloat(e.target.value),
                                 })
                               }
                             />
                           ) : (
-                            <p className="text-sm">{(displayPanel as any).width_cm ?? 'N/A'}</p>
+                            <p className="text-sm">{fullPanel.width_cm ?? 'N/A'}</p>
                           )}
                         </div>
                         {isEditing && (
@@ -846,16 +853,16 @@ export const DatabaseManager = () => {
                             <Input
                               type="number"
                               step="0.01"
-                              value={(currentPanel as any).weight_kg || ""}
+                              value={editPanel?.weight_kg ?? ""}
                               onChange={(e) =>
                                 setEditedPanel({
                                   ...editedPanel,
-                                  weight_kg: parseFloat(e.target.value),
+                                  weight_kg: e.target.value === '' ? null : parseFloat(e.target.value),
                                 })
                               }
                             />
                           ) : (
-                            <p className="text-sm">{(displayPanel as any).weight_kg ?? 'N/A'}</p>
+                            <p className="text-sm">{fullPanel.weight_kg ?? 'N/A'}</p>
                           )}
                         </div>
                       </div>
@@ -874,7 +881,7 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={(currentPanel as any).web_url || ""}
+                            value={editPanel?.web_url ?? ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, web_url: e.target.value })
                             }
@@ -882,9 +889,9 @@ export const DatabaseManager = () => {
                           />
                         ) : (
                           <p className="text-sm text-blue-600 hover:underline truncate">
-                            {(displayPanel as any).web_url ? (
-                              <a href={(displayPanel as any).web_url} target="_blank" rel="noopener noreferrer">
-                                {(displayPanel as any).web_url}
+                            {fullPanel.web_url ? (
+                              <a href={fullPanel.web_url} target="_blank" rel="noopener noreferrer">
+                                {fullPanel.web_url}
                               </a>
                             ) : (
                               <span className="text-muted-foreground">Not set</span>
@@ -904,7 +911,7 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Input
-                            value={(currentPanel as any).image_url || ""}
+                            value={editPanel?.image_url ?? ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, image_url: e.target.value })
                             }
@@ -912,14 +919,14 @@ export const DatabaseManager = () => {
                           />
                         ) : (
                           <p className="text-sm truncate">
-                            {(displayPanel as any).image_url ? (
+                            {fullPanel.image_url ? (
                               <a
-                                href={(displayPanel as any).image_url}
+                                href={fullPanel.image_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-blue-600 hover:underline"
                               >
-                                {(displayPanel as any).image_url}
+                                {fullPanel.image_url}
                               </a>
                             ) : (
                               <span className="text-muted-foreground">Not set</span>
@@ -939,7 +946,7 @@ export const DatabaseManager = () => {
                         </Label>
                         {isEditing ? (
                           <Textarea
-                            value={(currentPanel as any).description || ""}
+                            value={editPanel?.description ?? ""}
                             onChange={(e) =>
                               setEditedPanel({ ...editedPanel, description: e.target.value })
                             }
@@ -948,20 +955,20 @@ export const DatabaseManager = () => {
                           />
                         ) : (
                           <p className="text-sm text-muted-foreground">
-                            {(displayPanel as any).description || "No description"}
+                            {fullPanel.description || "No description"}
                           </p>
                         )}
                       </div>
 
                       <div className="space-y-2 text-xs text-muted-foreground pt-4 border-t">
-                        <p>Created: {new Date(displayPanel.created_at).toLocaleString()}</p>
-                        <p>Updated: {new Date(displayPanel.updated_at).toLocaleString()}</p>
+                        <p>Created: {new Date(fullPanel.created_at).toLocaleString()}</p>
+                        <p>Updated: {new Date(fullPanel.updated_at).toLocaleString()}</p>
                         {manualOverrides.length > 0 && (
                           <p className="text-amber-600 font-medium">
                             🔒 {manualOverrides.length} field(s) protected from auto-updates
                           </p>
                         )}
-                        <p className="font-mono text-[10px]">ID: {displayPanel.id}</p>
+                        <p className="font-mono text-[10px]">ID: {fullPanel.id}</p>
                       </div>
                     </div>
 
@@ -1004,7 +1011,7 @@ export const DatabaseManager = () => {
                 {panels.find((p) => p.id === deleteConfirm)?.name}
               </p>
               <p className="text-sm text-muted-foreground">
-                {(fullPanelData[deleteConfirm] as any)?.manufacturer || 'N/A'}
+                {fullPanelData[deleteConfirm]?.manufacturer || 'N/A'}
               </p>
             </div>
           )}
@@ -1024,4 +1031,3 @@ export const DatabaseManager = () => {
     </div>
   );
 };
-

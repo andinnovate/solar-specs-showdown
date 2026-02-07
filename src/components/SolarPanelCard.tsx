@@ -7,7 +7,7 @@ import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWit
 import { FlagIcon } from "@/components/FlagIcon";
 import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
 import { useState, useEffect } from "react";
-import { Tables } from "@/integrations/supabase/types";
+import { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { addAmazonAffiliateTag } from "@/lib/utils";
 
 type SolarPanel = Tables<"solar_panels"> & {
@@ -394,7 +394,7 @@ export const SolarPanelCard = ({
             console.log('Current user:', user.id, user.email);
 
             // Submit flag to database
-            const flagInsertData: any = {
+            const flagInsertData: TablesInsert<'user_flags'> = {
               panel_id: panel.id,
               user_id: user.id,
               flagged_fields: flagData.flaggedFields, // This should be JSONB array
@@ -412,7 +412,7 @@ export const SolarPanelCard = ({
               }
             }
 
-            const { data, error } = await (supabase as any)
+            const { data, error } = await supabase
               .from('user_flags')
               .insert(flagInsertData)
               .select()

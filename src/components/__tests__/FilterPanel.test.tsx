@@ -4,19 +4,25 @@ import { FilterPanel } from '../FilterPanel';
 import type { Tables } from '@/integrations/supabase/types';
 
 // Mock the HistogramSlider component
+type HistogramSliderMockProps = {
+  label: string;
+  value: [number, number];
+  onValueChange: (value: [number, number]) => void;
+};
+
 vi.mock('../HistogramSlider', () => ({
-  HistogramSlider: ({ label, value, onChange }: any) => (
+  HistogramSlider: ({ label, value, onValueChange }: HistogramSliderMockProps) => (
     <div data-testid={`histogram-${label}`}>
       <input
         type="range"
         value={value[0]}
-        onChange={(e) => onChange([parseInt(e.target.value), value[1]])}
+        onChange={(e) => onValueChange([parseInt(e.target.value, 10), value[1]])}
         data-testid={`slider-${label}-min`}
       />
       <input
         type="range"
         value={value[1]}
-        onChange={(e) => onChange([value[0], parseInt(e.target.value)])}
+        onChange={(e) => onValueChange([value[0], parseInt(e.target.value, 10)])}
         data-testid={`slider-${label}-max`}
       />
     </div>
@@ -29,8 +35,33 @@ type SolarPanel = Tables<'solar_panels'> & {
   pending_flags?: number;
 };
 
+const basePanel: SolarPanel = {
+  id: 'base',
+  name: 'Base Panel',
+  manufacturer: 'Base',
+  asin: null,
+  created_at: '2024-01-01',
+  updated_at: '2024-01-01',
+  description: null,
+  flag_count: null,
+  image_url: null,
+  length_cm: null,
+  manual_overrides: null,
+  missing_fields: null,
+  pending_flags: null,
+  piece_count: 1,
+  price_usd: null,
+  user_verified_overrides: null,
+  voltage: null,
+  wattage: null,
+  web_url: null,
+  weight_kg: null,
+  width_cm: null,
+};
+
 const mockPanels: SolarPanel[] = [
   {
+    ...basePanel,
     id: '1',
     name: 'Test Panel 1',
     manufacturer: 'Test Corp',
@@ -41,10 +72,9 @@ const mockPanels: SolarPanel[] = [
     weight_kg: 5,
     price_usd: 100,
     piece_count: 1,
-    created_at: '2024-01-01',
-    updated_at: '2024-01-01',
   },
   {
+    ...basePanel,
     id: '2',
     name: 'Test Panel 2',
     manufacturer: 'Another Corp',
@@ -55,10 +85,8 @@ const mockPanels: SolarPanel[] = [
     weight_kg: 10,
     price_usd: 200,
     piece_count: 2,
-    created_at: '2024-01-01',
-    updated_at: '2024-01-01',
   },
-] as any;
+];
 
 const mockFilters = {
   wattageRange: [100, 500] as [number, number],
@@ -186,4 +214,3 @@ describe('FilterPanel Component', () => {
     expect(moreFiltersButton).toBeInTheDocument();
   });
 });
-

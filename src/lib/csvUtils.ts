@@ -227,7 +227,8 @@ export function processCSVRow(
   csvRow: CSVRow, 
   fieldMappings: FieldMapping[]
 ): Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'> {
-  const processed = {} as Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'>;
+  type PanelInsert = Omit<SolarPanelInsert, 'id' | 'created_at' | 'updated_at'>;
+  const processed = {} as PanelInsert;
   
   // Default piece_count to 1 if not provided
   processed.piece_count = 1;
@@ -271,7 +272,7 @@ export function processCSVRow(
       processedValue = numValue;
     }
 
-    (processed as any)[mapping.dbField] = processedValue;
+    processed[mapping.dbField] = processedValue as PanelInsert[typeof mapping.dbField];
   }
 
   return processed;

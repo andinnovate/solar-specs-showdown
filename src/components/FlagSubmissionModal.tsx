@@ -10,6 +10,7 @@ import { Flag, AlertCircle, LogIn, Trash2 } from "lucide-react";
 import { Tables } from "@/integrations/supabase/types";
 import { UnitSystem } from "@/lib/unitConversions";
 import { supabase } from "@/integrations/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 type SolarPanel = Tables<"solar_panels">;
 
@@ -58,7 +59,7 @@ export const FlagSubmissionModal = ({
   const [recommendDeletion, setRecommendDeletion] = useState(false);
   const [deletionReason, setDeletionReason] = useState("");
   const [deletionOtherReason, setDeletionOtherReason] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   // Check authentication status
