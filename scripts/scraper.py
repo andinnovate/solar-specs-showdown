@@ -7,7 +7,8 @@ import re
 import requests
 import sys
 import os
-from typing import Dict, Optional, Tuple, List
+from dataclasses import dataclass, field
+from typing import Dict, Optional, Tuple, List, Any
 import logging
 
 # Add the project root to Python path
@@ -57,68 +58,124 @@ class UnitConverter:
             Tuple of (length_cm, width_cm) where length >= width, or None if parsing fails
         """
         try:
-            dim1 = None
-            dim2 = None
-            has_labels = False
-            unit_is_inches = False
-            
-            # Pattern 1: With L/W labels: "45.67\"L x 17.71\"W" or "45.67L x 17.71W"
-            pattern_labeled = r'([\d.]+)\s*["\']?\s*L\s*x\s*([\d.]+)\s*["\']?\s*W'
-            match = re.search(pattern_labeled, dim_string, re.IGNORECASE)
-            
-            if match:
-                dim1 = float(match.group(1))  # Length (as labeled)
-                dim2 = float(match.group(2))  # Width (as labeled)
-                has_labels = True
-                # Check if inches (has quotes) or cm
-                unit_is_inches = '"' in dim_string or "'" in dim_string
-            else:
-                # Pattern 2: Three dimensions with unit: "43 x 33.9 x 0.1 inches" or "115 x 66 x 3 cm"
-                pattern_three = r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*[\d.]+\s*(inch|cm)'
-                match = re.search(pattern_three, dim_string, re.IGNORECASE)
-                
-                if match:
-                    dim1 = float(match.group(1))
-                    dim2 = float(match.group(2))
-                    unit_is_inches = 'inch' in match.group(3).lower()
-                else:
-                    # Pattern 3: Just three numbers: "43 x 33.9 x 0.1"
-                    pattern_numbers = r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*[\d.]+'
-                    match = re.search(pattern_numbers, dim_string, re.IGNORECASE)
-                    
-                    if match:
-                        dim1 = float(match.group(1))
-                        dim2 = float(match.group(2))
-                        # Guess unit: if values > 20, likely cm; otherwise inches
-                        unit_is_inches = dim1 <= 20 and dim2 <= 20
-            
-            if dim1 is None or dim2 is None:
+            if not dim_string or not str(dim_string).strip():
                 return None
-            
-            # Convert to cm if in inches
-            if unit_is_inches:
-                dim1_cm = UnitConverter.inches_to_cm(dim1)
-                dim2_cm = UnitConverter.inches_to_cm(dim2)
-            else:
-                dim1_cm = round(dim1, 2)
-                dim2_cm = round(dim2, 2)
-            
-            # Ensure length >= width (unless explicitly labeled with L/W)
-            if has_labels:
-                # Trust the labels, but still ensure length > width makes sense
-                length_cm = dim1_cm
-                width_cm = dim2_cm
-            else:
-                # No labels: put larger dimension as length
-                if dim1_cm >= dim2_cm:
-                    length_cm = dim1_cm
-                    width_cm = dim2_cm
-                else:
-                    length_cm = dim2_cm
-                    width_cm = dim1_cm
-            
-            return (length_cm, width_cm)
-            
+
+            normalized = str(dim_string).lower()
+            normalized = normalized.replace('×', 'x')
+            normalized = re.sub(r'[,\u00a0]', ' ', normalized)
+            normalized = re.sub(r'\s+', ' ', normalized).strip()
+
+            def normalize_unit(unit: Optional[str]) -> Optional[str]:
+                if not unit:
+                    return None
+                unit = unit.strip().lower()
+                if unit in ['"', 'in', 'inch', 'inches']:
+                    return 'in'
+                if unit in ['cm', 'centimeter', 'centimeters']:
+                    return 'cm'
+                if unit in ['mm', 'millimeter', 'millimeters']:
+                    return 'mm'
+                if unit in ['m', 'meter', 'meters']:
+                    return 'm'
+                return None
+
+            def to_cm(value: float, unit: Optional[str]) -> float:
+                if unit == 'in':
+                    return UnitConverter.inches_to_cm(value)
+                if unit == 'mm':
+                    return round(value / 10.0, 2)
+                if unit == 'm':
+                    return round(value * 100.0, 2)
+                return round(value, 2)
+
+            def guess_unit_from_text(text: str) -> Optional[str]:
+                if '"' in text or 'inch' in text:
+                    return 'in'
+                if 'mm' in text or 'millimeter' in text:
+                    return 'mm'
+                if 'cm' in text or 'centimeter' in text:
+                    return 'cm'
+                if re.search(r'\bmeters?\b', text) or re.search(r'\bm\b', text):
+                    return 'm'
+                return None
+
+            def guess_unit_from_values(values: List[float]) -> Optional[str]:
+                if not values:
+                    return None
+                if max(values) <= 20:
+                    return 'in'
+                return 'cm'
+
+            def select_length_width(values_cm: List[float]) -> Optional[Tuple[float, float]]:
+                cleaned = [value for value in values_cm if value and value > 0]
+                if len(cleaned) < 2:
+                    return None
+                cleaned.sort(reverse=True)
+                return (round(cleaned[0], 2), round(cleaned[1], 2))
+
+            # Pattern A/B: labeled dimensions in any order (L/W/H or Length/Width/Height)
+            labeled_values: List[Tuple[float, Optional[str]]] = []
+            for match in re.finditer(
+                r'(\d+(?:\.\d+)?)\s*(mm|cm|m|in|inch|inches|\")?\s*([lwh])\b',
+                normalized,
+            ):
+                labeled_values.append((float(match.group(1)), match.group(2)))
+
+            for match in re.finditer(
+                r'(?:length|width|height|l|w|h)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|in|inch|inches|\")?',
+                normalized,
+            ):
+                labeled_values.append((float(match.group(1)), match.group(2)))
+
+            if len(labeled_values) >= 2:
+                fallback_unit = guess_unit_from_text(normalized)
+                values_only = [value for value, _ in labeled_values]
+                if not fallback_unit:
+                    fallback_unit = guess_unit_from_values(values_only)
+                converted = [
+                    to_cm(value, normalize_unit(unit) or fallback_unit)
+                    for value, unit in labeled_values
+                ]
+                selected = select_length_width(converted)
+                if selected:
+                    return selected
+
+            # Pattern C: three dimensions with trailing unit
+            pattern_three = r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*([\d.]+)\s*(mm|cm|m|in|inch|inches)'
+            match = re.search(pattern_three, normalized, re.IGNORECASE)
+            if match:
+                dims = [float(match.group(1)), float(match.group(2)), float(match.group(3))]
+                unit = normalize_unit(match.group(4))
+                converted = [to_cm(dim, unit) for dim in dims]
+                selected = select_length_width(converted)
+                if selected:
+                    return selected
+
+            # Pattern D: three numbers, no explicit units
+            pattern_numbers = r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*([\d.]+)'
+            match = re.search(pattern_numbers, normalized, re.IGNORECASE)
+            if match:
+                dims = [float(match.group(1)), float(match.group(2)), float(match.group(3))]
+                unit = guess_unit_from_values(dims)
+                converted = [to_cm(dim, unit) for dim in dims]
+                selected = select_length_width(converted)
+                if selected:
+                    return selected
+
+            # Pattern E: two dimensions with explicit unit nearby
+            pattern_two = r'([\d.]+)\s*x\s*([\d.]+)\s*(mm|cm|m|in|inch|inches)'
+            match = re.search(pattern_two, normalized, re.IGNORECASE)
+            if match:
+                dims = [float(match.group(1)), float(match.group(2))]
+                unit = normalize_unit(match.group(3))
+                converted = [to_cm(dim, unit) for dim in dims]
+                selected = select_length_width(converted)
+                if selected:
+                    return selected
+
+            return None
+
         except (ValueError, AttributeError) as e:
             logger.warning(f"Failed to parse dimensions '{dim_string}': {e}")
             return None
@@ -137,6 +194,8 @@ class UnitConverter:
             Weight in kg or None if parsing fails
         """
         try:
+            if not weight_string or not str(weight_string).strip():
+                return None
             # Extract numeric value
             numeric_match = re.search(r'([\d.]+)', weight_string)
             if not numeric_match:
@@ -148,6 +207,10 @@ class UnitConverter:
             weight_lower = weight_string.lower()
             if 'kg' in weight_lower or 'kilogram' in weight_lower:
                 return round(value, 2)
+            elif 'g' in weight_lower and 'kg' not in weight_lower:
+                return round(value / 1000.0, 2)
+            elif 'oz' in weight_lower or 'ounce' in weight_lower:
+                return round(value * 0.0283495, 2)
             elif 'lb' in weight_lower or 'pound' in weight_lower or 'lbs' in weight_lower:
                 return UnitConverter.pounds_to_kg(value)
             else:
@@ -280,6 +343,500 @@ class UnitConverter:
             return None
 
 
+@dataclass
+class ExtractionCandidate:
+    field: str
+    value: Any
+    confidence: float
+    source: str
+    raw: Optional[str] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'field': self.field,
+            'value': self.value,
+            'confidence': round(self.confidence, 3),
+            'source': self.source,
+            'raw': self.raw,
+            'meta': self.meta,
+        }
+
+
+class SpecExtractor:
+    """
+    Evidence-based extraction for problematic fields (wattage, dimensions, weight, piece_count, voltage).
+    Collects candidates from multiple sources and ranks by confidence.
+    """
+
+    WATTAGE_KEYS = {
+        'maximum power': 0.9,
+        'maximum power output': 0.9,
+        'rated power': 0.85,
+        'wattage': 0.85,
+        'output power': 0.8,
+        'power': 0.7,
+    }
+
+    WATTAGE_NOISE_PATTERNS = [
+        r'\b(inverter|battery|lifepo4|controller|charge controller|charger|generator|capacity|storage)\b',
+        r'\bpower\s+station\b',
+        r'\b\d+(?:\.\d+)?\s*(?:kwh|wh|ah|mah)\b',
+    ]
+
+    DIMENSION_KEYS = {
+        'product dimensions': 0.9,
+        'item dimensions': 0.85,
+        'item dimensions l x w x h': 0.85,
+        'package dimensions': 0.6,
+        'dimensions': 0.7,
+    }
+
+    WEIGHT_KEYS = {
+        'item weight': 0.9,
+        'weight': 0.7,
+        'package weight': 0.6,
+    }
+
+    PIECE_KEYS = {
+        'item package quantity': 0.9,
+        'number of pieces': 0.9,
+        'number of items': 0.85,
+        'piece count': 0.85,
+        'pieces': 0.7,
+        'pack': 0.6,
+        'package quantity': 0.75,
+    }
+
+    VOLTAGE_KEYS = {
+        'output voltage': 0.9,
+        'operating voltage': 0.85,
+        'rated voltage': 0.85,
+        'maximum voltage': 0.8,
+        'max voltage': 0.8,
+        'voltage': 0.7,
+    }
+
+    def __init__(self, api_response: Dict[str, Any]):
+        self.api_response = api_response
+        self.product_info = api_response.get('product_information', {}) or {}
+        self.asin = api_response.get('asin') or self.product_info.get('ASIN')
+        self.title = self._normalize_text(api_response.get('name') or '')
+        features = api_response.get('feature_bullets') or api_response.get('features') or []
+        if isinstance(features, str):
+            features = [features]
+        self.features = [self._normalize_text(f) for f in features if f]
+        self.description = self._normalize_text(
+            api_response.get('full_description') or api_response.get('description') or ''
+        )
+        self.attributes = api_response.get('attributes') or {}
+        self.technical_details = api_response.get('technical_details') or {}
+        self.spec_strings = self._build_spec_strings()
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return re.sub(r'\s+', ' ', str(text)).strip()
+
+    def _build_spec_strings(self) -> List[str]:
+        blocks = []
+        for key, value in {**self.product_info, **self.attributes, **self.technical_details}.items():
+            if value is None or value == '':
+                continue
+            blocks.append(f"{key}: {value}")
+        return blocks
+
+    def _find_product_info(self, patterns: Dict[str, float]) -> List[Tuple[str, Any, float]]:
+        matches = []
+        for key, value in self.product_info.items():
+            if value is None or value == '':
+                continue
+            key_lower = str(key).lower()
+            for pattern, confidence in patterns.items():
+                if pattern in key_lower:
+                    matches.append((key, value, confidence))
+                    break
+        return matches
+
+    @staticmethod
+    def _boost_consensus(candidates: List[ExtractionCandidate], tolerance: float = 0.01) -> None:
+        if not candidates:
+            return
+        groups: List[List[ExtractionCandidate]] = []
+        for candidate in candidates:
+            placed = False
+            for group in groups:
+                ref = group[0].value
+                if isinstance(ref, tuple) and isinstance(candidate.value, tuple):
+                    if abs(ref[0] - candidate.value[0]) <= tolerance and abs(ref[1] - candidate.value[1]) <= tolerance:
+                        group.append(candidate)
+                        placed = True
+                        break
+                elif isinstance(ref, (int, float)) and isinstance(candidate.value, (int, float)):
+                    if abs(ref - candidate.value) <= tolerance:
+                        group.append(candidate)
+                        placed = True
+                        break
+                else:
+                    if ref == candidate.value:
+                        group.append(candidate)
+                        placed = True
+                        break
+            if not placed:
+                groups.append([candidate])
+
+        for group in groups:
+            if len(group) > 1:
+                bonus = min(0.15, 0.05 * (len(group) - 1))
+                for candidate in group:
+                    candidate.confidence = min(0.99, candidate.confidence + bonus)
+
+    @staticmethod
+    def _select_best(candidates: List[ExtractionCandidate], validator=None) -> Optional[ExtractionCandidate]:
+        for candidate in sorted(candidates, key=lambda c: (-c.confidence, c.source)):
+            if validator and not validator(candidate.value):
+                continue
+            return candidate
+        return None
+
+    def _add_wattage_candidates_from_text(
+        self,
+        text: str,
+        source: str,
+        base_confidence: float,
+    ) -> List[ExtractionCandidate]:
+        candidates: List[ExtractionCandidate] = []
+        if not text:
+            return candidates
+
+        normalized = text.replace('×', 'x')
+        context = f"ASIN {self.asin}" if self.asin else None
+
+        def is_noise_context(match_start: int, match_end: int) -> bool:
+            window_start = max(0, match_start - 30)
+            window_end = min(len(normalized), match_end + 30)
+            window = normalized[window_start:window_end]
+            for pattern in self.WATTAGE_NOISE_PATTERNS:
+                if re.search(pattern, window):
+                    return True
+            return False
+
+        # Pattern: 2x100W or 2 x 100 W (optional pcs/panels)
+        match = re.search(
+            r'(\d+)\s*(?:pcs?|pieces|panels?)?\s*[x]\s*(\d+(?:\.\d+)?)\s*(?:w|watt|watts)\b',
+            normalized,
+            re.IGNORECASE,
+        )
+        if match:
+            if is_noise_context(match.start(), match.end()):
+                return candidates
+            count = int(match.group(1))
+            watts = UnitConverter.parse_power_string(match.group(2), context=context)
+            if watts:
+                candidates.append(ExtractionCandidate(
+                    field='wattage',
+                    value=watts,
+                    confidence=base_confidence + 0.1,
+                    source=source,
+                    raw=match.group(0),
+                    meta={'piece_count': count, 'pattern': 'count_x_wattage'}
+                ))
+
+        # Pattern: 100W x2 (optional pcs/panels)
+        match = re.search(
+            r'(\d+(?:\.\d+)?)\s*(?:w|watt|watts)\s*[x]\s*(\d+)\s*(?:pcs?|pieces|panels?)?\b',
+            normalized,
+            re.IGNORECASE,
+        )
+        if match:
+            if is_noise_context(match.start(), match.end()):
+                return candidates
+            watts = UnitConverter.parse_power_string(match.group(1), context=context)
+            count = int(match.group(2))
+            if watts:
+                candidates.append(ExtractionCandidate(
+                    field='wattage',
+                    value=watts,
+                    confidence=base_confidence + 0.1,
+                    source=source,
+                    raw=match.group(0),
+                    meta={'piece_count': count, 'pattern': 'wattage_x_count'}
+                ))
+
+        # Pattern: 2PCS 100W (count + pcs + wattage, no x)
+        match = re.search(
+            r'(\d+)\s*(?:pcs?|pieces|panels?)\s*(\d+(?:\.\d+)?)\s*(?:w|watt|watts)\b',
+            normalized,
+            re.IGNORECASE,
+        )
+        if match:
+            if is_noise_context(match.start(), match.end()):
+                return candidates
+            count = int(match.group(1))
+            watts = UnitConverter.parse_power_string(match.group(2), context=context)
+            if watts:
+                candidates.append(ExtractionCandidate(
+                    field='wattage',
+                    value=watts,
+                    confidence=base_confidence + 0.1,
+                    source=source,
+                    raw=match.group(0),
+                    meta={'piece_count': count, 'pattern': 'count_pcs_wattage'}
+                ))
+
+        # Simple wattage mentions
+        for match in re.finditer(r'(\d+(?:\.\d+)?)\s*(?:k?w|watt|watts)\b', normalized, re.IGNORECASE):
+            if is_noise_context(match.start(), match.end()):
+                continue
+            watts = UnitConverter.parse_power_string(match.group(0), context=context)
+            if watts:
+                candidates.append(ExtractionCandidate(
+                    field='wattage',
+                    value=watts,
+                    confidence=base_confidence,
+                    source=source,
+                    raw=match.group(0),
+                ))
+
+        return candidates
+
+    def extract_wattage(self) -> List[ExtractionCandidate]:
+        candidates: List[ExtractionCandidate] = []
+        for key, value, confidence in self._find_product_info(self.WATTAGE_KEYS):
+            candidates.extend(
+                self._add_wattage_candidates_from_text(
+                    str(value),
+                    source=f"product_information.{key}",
+                    base_confidence=confidence,
+                )
+            )
+
+        for feature in self.features:
+            candidates.extend(
+                self._add_wattage_candidates_from_text(
+                    feature, source="feature_bullets", base_confidence=0.75
+                )
+            )
+
+        if self.title:
+            candidates.extend(
+                self._add_wattage_candidates_from_text(
+                    self.title, source="title", base_confidence=0.6
+                )
+            )
+
+        if self.description:
+            candidates.extend(
+                self._add_wattage_candidates_from_text(
+                    self.description, source="description", base_confidence=0.45
+                )
+            )
+
+        self._boost_consensus(candidates)
+        return candidates
+
+    def extract_dimensions(self) -> List[ExtractionCandidate]:
+        candidates: List[ExtractionCandidate] = []
+        for key, value, confidence in self._find_product_info(self.DIMENSION_KEYS):
+            dims = UnitConverter.parse_dimension_string(str(value))
+            if dims:
+                candidates.append(ExtractionCandidate(
+                    field='dimensions',
+                    value=dims,
+                    confidence=confidence,
+                    source=f"product_information.{key}",
+                    raw=str(value),
+                ))
+
+        for text, source, confidence in [
+            (self.title, "title", 0.45),
+            (self.description, "description", 0.35),
+        ]:
+            if not text:
+                continue
+            dims = UnitConverter.parse_dimension_string(text)
+            if dims:
+                candidates.append(ExtractionCandidate(
+                    field='dimensions',
+                    value=dims,
+                    confidence=confidence,
+                    source=source,
+                    raw=text,
+                ))
+
+        self._boost_consensus(candidates)
+        return candidates
+
+    def extract_weight(self) -> List[ExtractionCandidate]:
+        candidates: List[ExtractionCandidate] = []
+        for key, value, confidence in self._find_product_info(self.WEIGHT_KEYS):
+            weight = UnitConverter.parse_weight_string(str(value))
+            if weight:
+                candidates.append(ExtractionCandidate(
+                    field='weight_kg',
+                    value=weight,
+                    confidence=confidence,
+                    source=f"product_information.{key}",
+                    raw=str(value),
+                ))
+
+        self._boost_consensus(candidates)
+        return candidates
+
+    def extract_piece_count(self, wattage_candidates: List[ExtractionCandidate]) -> List[ExtractionCandidate]:
+        candidates: List[ExtractionCandidate] = []
+
+        # From explicit product info keys
+        for key, value, confidence in self._find_product_info(self.PIECE_KEYS):
+            count_match = re.search(r'(\d+)', str(value))
+            if count_match:
+                count = int(count_match.group(1))
+                candidates.append(ExtractionCandidate(
+                    field='piece_count',
+                    value=count,
+                    confidence=confidence,
+                    source=f"product_information.{key}",
+                    raw=str(value),
+                ))
+
+        # From wattage multipliers
+        for candidate in wattage_candidates:
+            piece_count = candidate.meta.get('piece_count')
+            if piece_count:
+                candidates.append(ExtractionCandidate(
+                    field='piece_count',
+                    value=int(piece_count),
+                    confidence=min(0.95, candidate.confidence + 0.1),
+                    source=f"{candidate.source}.piece_count",
+                    raw=candidate.raw,
+                ))
+
+        # From title/features
+        pack_patterns = [
+            r'(\d+)\s*(?:pack|pk|pcs|pieces|panels?|set)\b',
+            r'(?:pack of|set of)\s*(\d+)',
+        ]
+        for text, source, confidence in [
+            (self.title, "title", 0.55),
+            (' '.join(self.features), "feature_bullets", 0.5),
+        ]:
+            if not text:
+                continue
+            for pattern in pack_patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    count = int(match.group(1))
+                    candidates.append(ExtractionCandidate(
+                        field='piece_count',
+                        value=count,
+                        confidence=confidence,
+                        source=source,
+                        raw=match.group(0),
+                    ))
+
+        self._boost_consensus(candidates)
+        return candidates
+
+    @staticmethod
+    def build_math_confirmed_piece_count(
+        wattage_candidates: List[ExtractionCandidate],
+        tolerance: float = 1.0,
+    ) -> List[ExtractionCandidate]:
+        confirmed: Dict[int, ExtractionCandidate] = {}
+
+        def base_source(source: str) -> str:
+            return source.split('.')[0]
+
+        for per_panel in wattage_candidates:
+            piece_count = per_panel.meta.get('piece_count')
+            if not piece_count or not isinstance(per_panel.value, int):
+                continue
+            for total in wattage_candidates:
+                if total is per_panel or not isinstance(total.value, int):
+                    continue
+                if base_source(total.source) != base_source(per_panel.source):
+                    continue
+                expected = int(piece_count) * per_panel.value
+                if abs(total.value - expected) > tolerance:
+                    continue
+
+                confidence = min(0.99, max(per_panel.confidence, total.confidence) + 0.2)
+                candidate = ExtractionCandidate(
+                    field='piece_count',
+                    value=int(piece_count),
+                    confidence=confidence,
+                    source=f"math_confirmed.{per_panel.source}",
+                    raw=per_panel.raw or total.raw,
+                    meta={
+                        'per_panel_wattage': per_panel.value,
+                        'total_wattage': total.value,
+                        'pattern': 'count_x_wattage_math',
+                    },
+                )
+                existing = confirmed.get(int(piece_count))
+                if not existing or candidate.confidence > existing.confidence:
+                    confirmed[int(piece_count)] = candidate
+
+        return list(confirmed.values())
+
+    def extract_voltage(self) -> List[ExtractionCandidate]:
+        candidates: List[ExtractionCandidate] = []
+
+        def parse_voltage_candidates(value: str) -> List[float]:
+            numeric_parts = re.findall(r'\d+(?:\.\d+)?', value)
+            return [float(v) for v in numeric_parts]
+
+        def choose_voltage(values: List[float]) -> Tuple[Optional[float], float, Dict[str, Any]]:
+            if not values:
+                return None, 0.0, {}
+            typical = {6, 12, 18, 24, 36, 48, 60}
+            for v in values:
+                if round(v) in typical:
+                    return round(v, 2), 0.85, {'pattern': 'typical_voltage'}
+            # Prefer lowest reasonable voltage
+            values_sorted = sorted(values)
+            for v in values_sorted:
+                if 1 <= v <= 200:
+                    return round(v, 2), 0.7, {'pattern': 'reasonable_voltage'}
+            # Fallback to high voltage (system)
+            return round(values_sorted[0], 2), 0.4, {'pattern': 'system_voltage'}
+
+        for key, value, confidence in self._find_product_info(self.VOLTAGE_KEYS):
+            values = parse_voltage_candidates(str(value))
+            chosen, bonus, meta = choose_voltage(values)
+            if chosen is not None:
+                candidates.append(ExtractionCandidate(
+                    field='voltage',
+                    value=chosen,
+                    confidence=min(0.99, confidence + bonus - 0.5),
+                    source=f"product_information.{key}",
+                    raw=str(value),
+                    meta=meta,
+                ))
+
+        # Title/feature voltage hints (lower confidence)
+        for text, source, confidence in [
+            (self.title, "title", 0.5),
+            (' '.join(self.features), "feature_bullets", 0.45),
+        ]:
+            if not text:
+                continue
+            values = parse_voltage_candidates(text)
+            chosen, bonus, meta = choose_voltage(values)
+            if chosen is not None:
+                candidates.append(ExtractionCandidate(
+                    field='voltage',
+                    value=chosen,
+                    confidence=min(0.9, confidence + bonus - 0.5),
+                    source=source,
+                    raw=text,
+                    meta=meta,
+                ))
+
+        self._boost_consensus(candidates)
+        return candidates
+
+
+
 class ScraperAPIParser:
     """Parses ScraperAPI response data into database format"""
     
@@ -328,37 +885,120 @@ class ScraperAPIParser:
                 logger.error("ASIN is missing")
                 return None
             
-            # OPTIONAL: Dimensions
-            dimensions_str = product_info.get('Product Dimensions', '')
-            dimensions = UnitConverter.parse_dimension_string(dimensions_str)
-            if not dimensions:
-                parsing_failures.append(f"Failed to parse dimensions: '{dimensions_str}'")
-                missing_fields.append('dimensions')
-                length_cm, width_cm = None, None
-            else:
+            extractor = SpecExtractor(api_response)
+            extraction_evidence: Dict[str, Any] = {}
+
+            def validate_dimensions(value: Any) -> bool:
+                if not value or not isinstance(value, tuple) or len(value) != 2:
+                    return False
+                length_val, width_val = value
+                if length_val <= 0 or width_val <= 0:
+                    return False
+                if length_val < width_val:
+                    return False
+                if length_val > 400 or width_val > 400:
+                    return False
+                return True
+
+            def validate_weight(value: Any) -> bool:
+                return isinstance(value, (int, float)) and 0.1 <= value <= 100
+
+            def validate_wattage(value: Any) -> bool:
+                return isinstance(value, int) and 5 <= value <= 2000
+
+            def validate_piece_count(value: Any) -> bool:
+                return isinstance(value, int) and 1 <= value <= 50
+
+            def validate_voltage(value: Any) -> bool:
+                return isinstance(value, (int, float)) and 1 <= value <= 200
+
+            def select_field(
+                field_label: str,
+                candidates: List[ExtractionCandidate],
+                threshold: float,
+                validator=None,
+                missing_key: Optional[str] = None,
+                track_missing: bool = True,
+                log_failures: bool = True,
+            ) -> Any:
+                sorted_candidates = sorted(candidates, key=lambda c: (-c.confidence, c.source))
+                evidence = {
+                    'candidates': [c.to_dict() for c in sorted_candidates[:3]]
+                }
+                best = SpecExtractor._select_best(sorted_candidates, validator)
+                if best:
+                    evidence['selected'] = best.to_dict()
+                extraction_evidence[field_label] = evidence
+
+                if not best:
+                    if track_missing and missing_key:
+                        missing_fields.append(missing_key)
+                    if log_failures:
+                        parsing_failures.append(f"No {field_label} candidates")
+                    return None
+
+                if best.confidence < threshold:
+                    if track_missing and missing_key:
+                        missing_fields.append(missing_key)
+                    if log_failures:
+                        parsing_failures.append(
+                            f"Low confidence {field_label} ({best.confidence:.2f}) from {best.source}"
+                        )
+                    return None
+
+                return best.value
+
+            wattage_candidates = extractor.extract_wattage()
+            dimensions_candidates = extractor.extract_dimensions()
+            weight_candidates = extractor.extract_weight()
+            voltage_candidates = extractor.extract_voltage()
+            piece_count_candidates = extractor.extract_piece_count(wattage_candidates)
+            piece_count_candidates.extend(
+                SpecExtractor.build_math_confirmed_piece_count(wattage_candidates)
+            )
+
+            wattage = select_field(
+                "wattage",
+                wattage_candidates,
+                threshold=0.6,
+                validator=validate_wattage,
+                missing_key='wattage',
+            )
+            dimensions = select_field(
+                "dimensions",
+                dimensions_candidates,
+                threshold=0.6,
+                validator=validate_dimensions,
+                missing_key='dimensions',
+            )
+            if dimensions:
                 length_cm, width_cm = dimensions
-            
-            # OPTIONAL: Weight
-            weight_str = product_info.get('Item Weight', '')
-            weight_kg = UnitConverter.parse_weight_string(weight_str)
-            if not weight_kg:
-                parsing_failures.append(f"Failed to parse weight: '{weight_str}'")
-                missing_fields.append('weight')
-                weight_kg = None
-            
-            # OPTIONAL: Wattage
-            wattage_str = product_info.get('Maximum Power', '')
-            wattage = UnitConverter.parse_power_string(wattage_str, context=f"ASIN {asin}")
-            if not wattage:
-                parsing_failures.append(f"Failed to parse wattage: '{wattage_str}'")
-                missing_fields.append('wattage')
-                wattage = None
-            
-            # Parse voltage (optional)
-            # Note: Some products list "Maximum Voltage" as system voltage (e.g. 1000V)
-            # rather than panel operating voltage (12V-48V). We store it anyway for now.
-            voltage_str = product_info.get('Maximum Voltage', '')
-            voltage = UnitConverter.parse_voltage_string(voltage_str) if voltage_str else None
+            else:
+                length_cm, width_cm = None, None
+
+            weight_kg = select_field(
+                "weight",
+                weight_candidates,
+                threshold=0.65,
+                validator=validate_weight,
+                missing_key='weight',
+            )
+            piece_count = select_field(
+                "piece_count",
+                piece_count_candidates,
+                threshold=0.6,
+                validator=validate_piece_count,
+                track_missing=False,
+                log_failures=False,
+            )
+            voltage = select_field(
+                "voltage",
+                voltage_candidates,
+                threshold=0.55,
+                validator=validate_voltage,
+                track_missing=False,
+                log_failures=False,
+            )
             
             # Optional: Flag suspiciously high voltages (likely system specs, not panel voltage)
             # Typical panel voltages are 12V, 24V, 36V, 48V
@@ -409,12 +1049,14 @@ class ScraperAPIParser:
                 'weight_kg': weight_kg,
                 'wattage': wattage,
                 'voltage': voltage,
+                'piece_count': piece_count,
                 'price_usd': price_usd,
                 'description': description,
                 'image_url': image_url,
                 'web_url': web_url,
                 'parsing_failures': parsing_failures,
-                'missing_fields': missing_fields  # NEW: Track missing fields
+                'missing_fields': missing_fields,  # NEW: Track missing fields
+                'extraction_evidence': extraction_evidence
             }
             
             return panel_data
@@ -753,4 +1395,3 @@ class ScraperAPIClient:
                 asins.append(asin)
         
         return asins
-

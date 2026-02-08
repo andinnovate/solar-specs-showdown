@@ -78,7 +78,15 @@ class TestDimensionParsing:
         length, width = result
         assert length == 115.0
         assert width == 66.0
-    
+
+    def test_labeled_dimensions_any_order(self):
+        """Test labeled dimensions in any order are sorted by size"""
+        result = UnitConverter.parse_dimension_string('1.18"H x 17.71"W x 45.67"L')
+        assert result is not None
+        length, width = result
+        assert length == 116.00
+        assert width == 44.98
+
     def test_simple_dimensions_with_inches(self):
         """Test format: '43 x 33.9 x 0.1 inches' (simple, inches)"""
         result = UnitConverter.parse_dimension_string("43 x 33.9 x 0.1 inches")
@@ -211,14 +219,66 @@ class TestProductParsing:
     ("115 x 66 x 3 cm", (115.0, 66.0)),
     ("43 x 33.9 x 0.1 inches", (109.22, 86.11)),
     ("33.9 x 43 x 0.1 inches", (109.22, 86.11)),  # Auto-swap
+    ("0.1 x 33.9 x 43 inches", (109.22, 86.11)),  # Height first, still select top two
+    ("45.67 x 17.71 in", (116.00, 44.98)),
+    ("115 x 66 cm", (115.0, 66.0)),
     ("100 x 50 x 2", (100.0, 50.0)),
     ('45.67"L x 17.71"W x 1.18"H', (116.00, 44.98)),
+    ("1000 x 500 x 10 mm", (100.0, 50.0)),
+    ("1.2 x 0.6 x 0.04 m", (120.0, 60.0)),
 ])
 def test_dimension_parsing_parametrized(input_str, expected):
     """Parametrized test for various dimension formats"""
     result = UnitConverter.parse_dimension_string(input_str)
     assert result is not None, f"Failed to parse: {input_str}"
     assert result == expected, f"Expected {expected}, got {result}"
+
+
+class TestSpecExtractor:
+    """Test evidence-based extraction for key fields."""
+
+    def test_extracts_piece_count_from_wattage_pattern(self):
+        api_response = {
+            "name": "2x100W Solar Panel Kit",
+            "asin": "B0TEST100",
+            "brand": "TestBrand",
+            "product_information": {}
+        }
+
+        parsed = ScraperAPIParser.parse_product_data(api_response)
+        assert parsed is not None
+        assert parsed['wattage'] == 100
+        assert parsed['piece_count'] == 2
+
+    def test_extracts_voltage_from_output_voltage(self):
+        api_response = {
+            "name": "Test Panel",
+            "asin": "B0TEST200",
+            "brand": "TestBrand",
+            "product_information": {
+                "Output Voltage": "12/24V"
+            }
+        }
+
+        parsed = ScraperAPIParser.parse_product_data(api_response)
+        assert parsed is not None
+        assert parsed['voltage'] == 12.0
+
+    def test_piece_count_math_overrides_item_package_quantity(self):
+        api_response = {
+            "name": "Kit 200W Solar Panel, 2PCS 100W Monocrystalline Panels",
+            "asin": "B0TEST300",
+            "brand": "TestBrand",
+            "product_information": {
+                "Maximum Power": "200W",
+                "Item Package Quantity": "1",
+            }
+        }
+
+        parsed = ScraperAPIParser.parse_product_data(api_response)
+        assert parsed is not None
+        assert parsed['wattage'] == 200
+        assert parsed['piece_count'] == 2
 
 
 @pytest.mark.parametrize("input_str,expected", [
@@ -377,4 +437,3 @@ class TestRealWorldFormats:
 if __name__ == "__main__":
     # Allow running with pytest or directly
     pytest.main([__file__, "-v"])
-

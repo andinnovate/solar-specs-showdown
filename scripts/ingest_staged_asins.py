@@ -371,6 +371,10 @@ async def ingest_single_asin(
         if parsing_failures:
             metadata['parsing_failures'] = parsing_failures
             logger.log_script_event("INFO", f"ASIN {asin} had parsing failures: {', '.join(parsing_failures)}")
+
+        extraction_evidence = parsed_data.get('extraction_evidence')
+        if extraction_evidence:
+            metadata['extraction_evidence'] = extraction_evidence
         
         # Apply wattage filtering (only if wattage exists)
         wattage = parsed_data.get('wattage')
@@ -410,6 +414,7 @@ async def ingest_single_asin(
         # Remove parsing_failures from parsed_data before database insertion
         # (parsing_failures is stored in raw_scraper_data metadata, not solar_panels table)
         parsed_data.pop('parsing_failures', None)
+        parsed_data.pop('extraction_evidence', None)
         
         # Insert into database
         panel_id = await db.add_new_panel(parsed_data)
@@ -785,4 +790,3 @@ async def main():
 if __name__ == "__main__":
     exit_code = asyncio.run(main())
     exit(exit_code)
-

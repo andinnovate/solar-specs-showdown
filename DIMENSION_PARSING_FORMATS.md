@@ -4,7 +4,8 @@ The dimension parser in `scripts/scraper.py` supports multiple Amazon product di
 
 ## ✅ Supported Formats
 
-All formats are parsed and converted to **centimeters**, with **length always >= width**.
+All formats are parsed and converted to **centimeters**, with **length always >= width**.  
+For panels, we **always choose the two largest dimensions as L and W**, regardless of the order or labels in the source text.
 
 ### Format 1: Labeled with L/W (with quotes - inches)
 ```
@@ -12,7 +13,7 @@ All formats are parsed and converted to **centimeters**, with **length always >=
 "45.67"L x 17.71"W x 1.18"H"     → Length: 116.00 cm, Width: 44.98 cm
 ```
 - ✅ Detects inches from quote marks
-- ✅ Respects L/W labels (doesn't swap)
+- ✅ Ignores label order (always chooses the two largest values)
 - ✅ Converts to cm
 
 ### Format 2: Labeled with L/W (no quotes - cm)
@@ -21,7 +22,7 @@ All formats are parsed and converted to **centimeters**, with **length always >=
 "115 L x 66 W x 3 H"             → Length: 115.00 cm, Width: 66.00 cm
 ```
 - ✅ No quotes = assumes cm
-- ✅ Respects L/W labels
+- ✅ Ignores label order
 - ✅ Already in cm
 
 ### Format 3: Simple with unit specified
@@ -31,7 +32,16 @@ All formats are parsed and converted to **centimeters**, with **length always >=
 "100 x 50 x 2 centimeters"       → Length: 100.00 cm, Width: 50.00 cm
 ```
 - ✅ Detects unit from text (inches/cm)
-- ✅ Auto-swaps to ensure length >= width
+- ✅ Always selects the two largest dimensions
+- ✅ Converts to cm if needed
+
+### Format 3b: Two dimensions with unit specified
+```
+"45.67 x 17.71 in"               → Length: 116.00 cm, Width: 44.98 cm
+"115 x 66 cm"                    → Length: 115.00 cm, Width: 66.00 cm
+```
+- ✅ Requires an explicit unit to avoid false positives
+- ✅ Always selects the two largest dimensions
 - ✅ Converts to cm if needed
 
 ### Format 4: Simple reversed (auto-corrects)
@@ -39,7 +49,7 @@ All formats are parsed and converted to **centimeters**, with **length always >=
 "33.9 x 43 x 0.1 inches"         → Length: 109.22 cm, Width: 86.11 cm
 "66 x 115 x 3 cm"                → Length: 115.00 cm, Width: 66.00 cm
 ```
-- ✅ Auto-swaps dimensions to ensure length > width
+- ✅ Always selects the two largest dimensions
 - ✅ Detects unit from text
 - ✅ Converts to cm if needed
 
@@ -50,7 +60,7 @@ All formats are parsed and converted to **centimeters**, with **length always >=
 ```
 - ✅ If values > 20: assumes cm
 - ✅ If values <= 20: assumes inches (converts to cm)
-- ✅ Auto-swaps to ensure length >= width
+- ✅ Always selects the two largest dimensions
 
 ## Parsing Logic
 
@@ -72,8 +82,8 @@ All formats are parsed and converted to **centimeters**, with **length always >=
 - Round to 2 decimal places
 
 ### Step 4: Length/Width Assignment
-- **If L/W labeled**: Use as labeled (trust the source)
-- **If not labeled**: Put larger value as length, smaller as width
+- **Always** sort by magnitude and pick the two largest values
+- **Labels and order are ignored** (L > W > H for panels)
 
 ## Examples from Real Products
 
@@ -81,28 +91,28 @@ All formats are parsed and converted to **centimeters**, with **length always >=
 ```
 Input:  "45.67\"L x 17.71\"W x 1.18\"H"
 Output: Length: 116.00 cm, Width: 44.98 cm
-Logic:  Has quotes + L/W labels → inches, convert to cm, respect labels
+Logic:  Has quotes + labels → inches, convert to cm, choose two largest values
 ```
 
 ### Example 2: Renogy Flexible (from error log)
 ```
 Input:  "43 x 33.9 x 0.1 inches"
 Output: Length: 109.22 cm, Width: 86.11 cm
-Logic:  Has "inches" → convert to cm, larger value becomes length
+Logic:  Has "inches" → convert to cm, choose two largest values
 ```
 
 ### Example 3: Large Panel
 ```
 Input:  "115 x 66 x 3 cm"
 Output: Length: 115.00 cm, Width: 66.00 cm
-Logic:  Has "cm" → use as-is, larger value becomes length
+Logic:  Has "cm" → use as-is, choose two largest values
 ```
 
 ### Example 4: Compact Panel (ambiguous)
 ```
 Input:  "17.71 x 45.67 x 1.18 inches"
 Output: Length: 116.00 cm, Width: 44.98 cm
-Logic:  Has "inches" → convert to cm, auto-swap so 45.67 becomes length
+Logic:  Has "inches" → convert to cm, choose two largest values
 ```
 
 ## Error Handling
@@ -145,4 +155,3 @@ Potential additions if needed:
 - Support for meters
 - Support for Height extraction (currently ignored)
 - Validation ranges (flag suspiciously large/small values)
-

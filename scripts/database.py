@@ -158,6 +158,10 @@ class SolarPanelDB:
                 'web_url': panel_data.get('web_url'),
                 'missing_fields': missing_fields
             }
+
+            piece_count = panel_data.get('piece_count')
+            if piece_count is not None:
+                insert_data['piece_count'] = piece_count
             
             result = self.client.table('solar_panels').insert(insert_data).execute()
             if result.data:
@@ -194,17 +198,21 @@ class SolarPanelDB:
             
             if respect_manual_overrides:
                 # Get current panel to check manual_overrides
-                current_result = self.client.table('solar_panels').select('manual_overrides').eq('id', panel_id).execute()
+                current_result = self.client.table('solar_panels').select(
+                    'manual_overrides, user_verified_overrides'
+                ).eq('id', panel_id).execute()
                 
                 if current_result.data:
                     manual_overrides = current_result.data[0].get('manual_overrides', [])
+                    user_verified_overrides = current_result.data[0].get('user_verified_overrides', [])
+                    protected_fields = set(manual_overrides or []) | set(user_verified_overrides or [])
                     
                     # Filter out fields that have been manually edited
                     update_data = {}
                     for key, value in panel_data.items():
-                        if key in manual_overrides:
+                        if key in protected_fields:
                             skipped_fields.append(key)
-                            logger.info(f"Skipping manually edited field '{key}' for panel {panel_id}")
+                            logger.info(f"Skipping protected field '{key}' for panel {panel_id}")
                         else:
                             update_data[key] = value
                     
