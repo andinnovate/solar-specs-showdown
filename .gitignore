@@ -38,3 +38,6 @@ __pycache__/
 localhost_export_*.csv
 .coverage
 supabase/.temp/
+playwright-report/
+test-results/
+.playwright/
