@@ -12,7 +12,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sun, Grid, Table, List, ArrowUpDown, User, Settings, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
-import { UnitSystem, formatDimensions, formatWeight } from "@/lib/unitConversions";
+import {
+  UnitSystem,
+  formatDimensions,
+  formatWeight,
+  wattsPerWeight,
+  wattsPerArea,
+  convertWattsPerWeightValue,
+  convertWattsPerAreaValue,
+} from "@/lib/unitConversions";
 import { isAdminUser } from "@/lib/adminUtils";
 import { Tables } from "@/integrations/supabase/types";
 import { addAmazonAffiliateTag } from "@/lib/utils";
@@ -72,11 +80,11 @@ const Index = () => {
     }
     if (filters.wattsPerKgRange[0] !== bounds.wattsPerKg.min || filters.wattsPerKgRange[1] !== bounds.wattsPerKg.max) {
       count++;
-      appliedFilters.push('W/kg');
+      appliedFilters.push(unitSystem === 'imperial' ? 'W/lb' : 'W/kg');
     }
     if (filters.wattsPerSqMRange[0] !== bounds.wattsPerSqM.min || filters.wattsPerSqMRange[1] !== bounds.wattsPerSqM.max) {
       count++;
-      appliedFilters.push('W/m²');
+      appliedFilters.push(unitSystem === 'imperial' ? 'W/ft²' : 'W/m²');
     }
     if (filters.showFavoritesOnly) {
       count++;
@@ -102,6 +110,33 @@ const Index = () => {
 
   // Wrapper function to save unit system to localStorage
   const handleUnitSystemChange = (newUnitSystem: UnitSystem) => {
+    if (newUnitSystem !== unitSystem) {
+      setFilters(prev => {
+        const wattsPerKgRange: [number, number] = [
+          convertWattsPerWeightValue(prev.wattsPerKgRange[0], unitSystem, newUnitSystem),
+          convertWattsPerWeightValue(prev.wattsPerKgRange[1], unitSystem, newUnitSystem),
+        ].map(value =>
+          newUnitSystem === 'imperial'
+            ? Math.round(value * 10) / 10
+            : Math.round(value * 100) / 100
+        ) as [number, number];
+
+        const wattsPerSqMRange: [number, number] = [
+          convertWattsPerAreaValue(prev.wattsPerSqMRange[0], unitSystem, newUnitSystem),
+          convertWattsPerAreaValue(prev.wattsPerSqMRange[1], unitSystem, newUnitSystem),
+        ].map(value =>
+          newUnitSystem === 'imperial'
+            ? Math.round(value * 10) / 10
+            : Math.round(value)
+        ) as [number, number];
+
+        return {
+          ...prev,
+          wattsPerKgRange,
+          wattsPerSqMRange,
+        };
+      });
+    }
     setUnitSystem(newUnitSystem);
     if (typeof window !== 'undefined') {
       localStorage.setItem('solar-panel-unit-system', newUnitSystem);
@@ -193,10 +228,12 @@ const Index = () => {
           const totalWattage = p.wattage! * (p.piece_count || 1);
           return p.price_usd! / totalWattage;
         });
-        const validWattsPerKgs = transformedData.filter(p => p.wattage !== null && p.weight_kg !== null).map(p => p.wattage! / p.weight_kg!);
-        const validWattsPerSqMs = transformedData.filter(p => p.wattage !== null && p.length_cm !== null && p.width_cm !== null).map(p => 
-          p.wattage! / ((p.length_cm! * p.width_cm!) / 10000)
-        );
+        const validWattsPerKgs = transformedData
+          .map(p => wattsPerWeight(p.wattage ?? null, p.weight_kg ?? null, unitSystem))
+          .filter((value): value is number => value !== null);
+        const validWattsPerSqMs = transformedData
+          .map(p => wattsPerArea(p.wattage ?? null, p.length_cm ?? null, p.width_cm ?? null, unitSystem))
+          .filter((value): value is number => value !== null);
         
         setFilters({
           wattageRange: validWattages.length > 0 ? [Math.min(...validWattages), Math.max(...validWattages)] : [0, 1000],
@@ -246,8 +283,12 @@ const Index = () => {
       const totalWattage = p.wattage! * (p.piece_count || 1);
       return p.price_usd! / totalWattage;
     });
-    const wattsPerKgs = panels.filter(p => p.wattage !== null && p.weight_kg !== null).map(p => p.wattage! / p.weight_kg!);
-    const wattsPerSqMs = panels.filter(p => p.wattage !== null && p.length_cm !== null && p.width_cm !== null).map(p => p.wattage! / ((p.length_cm! * p.width_cm!) / 10000));
+    const wattsPerKgs = panels
+      .map(p => wattsPerWeight(p.wattage ?? null, p.weight_kg ?? null, unitSystem))
+      .filter((value): value is number => value !== null);
+    const wattsPerSqMs = panels
+      .map(p => wattsPerArea(p.wattage ?? null, p.length_cm ?? null, p.width_cm ?? null, unitSystem))
+      .filter((value): value is number => value !== null);
     
     return {
       wattage: validWattages.length > 0 ? {
@@ -287,7 +328,7 @@ const Index = () => {
         max: Math.max(...wattsPerSqMs)
       } : { min: 0, max: 300 },
     };
-  }, [panels]);
+  }, [panels, unitSystem]);
 
   const filteredPanels = useMemo(() => {
     return panels.filter(panel => {
@@ -322,8 +363,8 @@ const Index = () => {
       // Price per watt uses total wattage (wattage × piece_count)
       const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
       const pricePerWatt = panel.price_usd && totalWattage ? panel.price_usd / totalWattage : null;
-      const wattsPerKg = panel.wattage && panel.weight_kg ? panel.wattage / panel.weight_kg : null;
-      const wattsPerSqM = panel.wattage && panel.length_cm && panel.width_cm ? panel.wattage / ((panel.length_cm * panel.width_cm) / 10000) : null;
+      const wattsPerKg = wattsPerWeight(panel.wattage ?? null, panel.weight_kg ?? null, unitSystem);
+      const wattsPerSqM = wattsPerArea(panel.wattage ?? null, panel.length_cm ?? null, panel.width_cm ?? null, unitSystem);
       
       return (panel.wattage === null || (panel.wattage >= filters.wattageRange[0] && panel.wattage <= filters.wattageRange[1])) &&
         (panel.voltage === null || (panel.voltage >= filters.voltageRange[0] && panel.voltage <= filters.voltageRange[1])) &&
@@ -335,7 +376,7 @@ const Index = () => {
         (wattsPerKg === null || (wattsPerKg >= filters.wattsPerKgRange[0] && wattsPerKg <= filters.wattsPerKgRange[1])) &&
         (wattsPerSqM === null || (wattsPerSqM >= filters.wattsPerSqMRange[0] && wattsPerSqM <= filters.wattsPerSqMRange[1]));
     });
-  }, [panels, filters, user, isPanelHidden, isPanelFavorite, fadingOutPanels]);
+  }, [panels, filters, user, isPanelHidden, isPanelFavorite, fadingOutPanels, unitSystem]);
 
   const sortedPanels = useMemo(() => {
     const sorted = [...filteredPanels];
@@ -355,14 +396,14 @@ const Index = () => {
         return sorted.sort((a, b) => b.wattage - a.wattage);
       case 'efficiency-asc':
         return sorted.sort((a, b) => {
-          const effA = a.wattage / ((a.length_cm * a.width_cm) / 10000);
-          const effB = b.wattage / ((b.length_cm * b.width_cm) / 10000);
+          const effA = wattsPerArea(a.wattage ?? null, a.length_cm ?? null, a.width_cm ?? null, unitSystem) ?? 0;
+          const effB = wattsPerArea(b.wattage ?? null, b.length_cm ?? null, b.width_cm ?? null, unitSystem) ?? 0;
           return effA - effB;
         });
       case 'efficiency-desc':
         return sorted.sort((a, b) => {
-          const effA = a.wattage / ((a.length_cm * a.width_cm) / 10000);
-          const effB = b.wattage / ((b.length_cm * b.width_cm) / 10000);
+          const effA = wattsPerArea(a.wattage ?? null, a.length_cm ?? null, a.width_cm ?? null, unitSystem) ?? 0;
+          const effB = wattsPerArea(b.wattage ?? null, b.length_cm ?? null, b.width_cm ?? null, unitSystem) ?? 0;
           return effB - effA;
         });
       case 'value-asc':
@@ -372,7 +413,7 @@ const Index = () => {
       default:
         return sorted;
     }
-  }, [filteredPanels, sortBy]);
+  }, [filteredPanels, sortBy, unitSystem]);
 
   const comparedPanels = useMemo(() => {
     return panels.filter(p => selectedIds.has(p.id));
@@ -441,8 +482,8 @@ const Index = () => {
       { value: 'price-desc', label: 'Price High to Low', category: 'price', highlighted: isFiltered('price') },
       { value: 'wattage-asc', label: 'Wattage Low to High', category: 'specs', highlighted: isFiltered('wattage') },
       { value: 'wattage-desc', label: 'Wattage High to Low', category: 'specs', highlighted: isFiltered('wattage') },
-      { value: 'efficiency-asc', label: 'Efficiency Low to High (W/m²)', category: 'efficiency', highlighted: isFiltered('efficiency') },
-      { value: 'efficiency-desc', label: 'Efficiency High to Low (W/m²)', category: 'efficiency', highlighted: isFiltered('efficiency') },
+      { value: 'efficiency-asc', label: `Efficiency Low to High (W/${unitSystem === 'imperial' ? 'ft²' : 'm²'})`, category: 'efficiency', highlighted: isFiltered('efficiency') },
+      { value: 'efficiency-desc', label: `Efficiency High to Low (W/${unitSystem === 'imperial' ? 'ft²' : 'm²'})`, category: 'efficiency', highlighted: isFiltered('efficiency') },
       { value: 'value-asc', label: 'Best Value ($/W Low to High)', category: 'value', highlighted: isFiltered('value') },
       { value: 'value-desc', label: 'Worst Value ($/W High to Low)', category: 'value', highlighted: isFiltered('value') },
     ];
@@ -732,14 +773,14 @@ const Index = () => {
                     <div className="col-span-1 text-center">$/W</div>
                     <div className="col-span-2 text-center">Dimensions</div>
                     <div className="col-span-1 text-center">Weight</div>
-                    <div className="col-span-1 text-center">W/m²</div>
+                    <div className="col-span-1 text-center">W/{unitSystem === 'imperial' ? 'ft²' : 'm²'}</div>
                     <div className="col-span-2 text-center">Actions</div>
                   </div>
                   
                   {/* List Items */}
                   {sortedPanels.map((panel, index) => {
                     const pricePerWatt = panel.price_usd / panel.wattage;
-                    const efficiency = panel.wattage / ((panel.length_cm * panel.width_cm) / 10000);
+                    const efficiency = wattsPerArea(panel.wattage ?? null, panel.length_cm ?? null, panel.width_cm ?? null, unitSystem);
                     const isSelected = selectedIds.has(panel.id);
                     
                     return (
@@ -760,7 +801,7 @@ const Index = () => {
                           {formatDimensions(panel.length_cm, panel.width_cm, unitSystem)}
                         </div>
                         <div className="col-span-1 text-center font-mono">{formatWeight(panel.weight_kg, unitSystem)}</div>
-                        <div className="col-span-1 text-center font-mono">{Math.round(efficiency)}</div>
+                        <div className="col-span-1 text-center font-mono">{efficiency ?? 'N/A'}</div>
                         <div className="col-span-2 flex items-center justify-center gap-2">
                           <div className="flex items-center space-x-2">
                             <Checkbox

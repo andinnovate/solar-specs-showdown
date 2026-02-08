@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star, AlertCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces } from "@/lib/unitConversions";
+import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, wattsPerWeight, wattsPerArea } from "@/lib/unitConversions";
 import { FlagIcon } from "@/components/FlagIcon";
 import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
 import { useState, useEffect } from "react";
@@ -95,9 +95,8 @@ export const SolarPanelCard = ({
   // Calculate price per watt using total wattage (wattage × piece_count)
   const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
   const pricePerWatt = totalWattage && panel.price_usd && panel.price_usd > 0 ? (panel.price_usd / totalWattage).toFixed(2) : null;
-  const wattsPerKg = panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null;
-  const areaM2 = panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null;
-  const wattsPerSqM = panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null;
+  const wattsPerKg = wattsPerWeight(panel.wattage ?? null, panel.weight_kg ?? null, unitSystem);
+  const wattsPerSqM = wattsPerArea(panel.wattage ?? null, panel.length_cm ?? null, panel.width_cm ?? null, unitSystem);
 
   return (
     <Card className={`overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${
@@ -315,9 +314,9 @@ export const SolarPanelCard = ({
           <div className="flex items-center gap-2 text-sm">
             <Zap className="w-4 h-4 text-accent" />
             <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'lb' : 'kg'}:</span>
-            {wattsPerKg ? (
+            {wattsPerKg !== null ? (
               <span className="font-bold text-accent">
-                {unitSystem === 'imperial' ? (parseFloat(wattsPerKg) / 0.453592).toFixed(1) : wattsPerKg}
+                {wattsPerKg}
               </span>
             ) : (
               <span className="text-sm text-muted-foreground">N/A</span>
@@ -327,7 +326,7 @@ export const SolarPanelCard = ({
           <div className="flex items-center gap-2 text-sm col-span-2">
             <Zap className="w-4 h-4 text-accent" />
             <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'ft²' : 'm²'}:</span>
-            {wattsPerSqM ? (
+            {wattsPerSqM !== null ? (
               <span className="font-bold text-accent">{wattsPerSqM}</span>
             ) : (
               <span className="text-sm text-muted-foreground">N/A</span>

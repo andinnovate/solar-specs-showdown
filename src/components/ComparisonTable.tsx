@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X, ExternalLink } from "lucide-react";
-import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, formatWattageWithPieces } from "@/lib/unitConversions";
+import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, formatWattageWithPieces, wattsPerWeight, wattsPerArea } from "@/lib/unitConversions";
 import { Tables } from "@/integrations/supabase/types";
 import { addAmazonAffiliateTag } from "@/lib/utils";
 
@@ -44,9 +44,8 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
     const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
     return {
       pricePerWatt: totalWattage && panel.price_usd ? (panel.price_usd / totalWattage).toFixed(2) : null,
-      wattsPerKg: panel.wattage && panel.weight_kg ? (panel.wattage / panel.weight_kg).toFixed(2) : null,
-      areaM2: panel.length_cm && panel.width_cm ? ((panel.length_cm * panel.width_cm) / 10000).toFixed(2) : null,
-      wattsPerSqM: panel.wattage && panel.length_cm && panel.width_cm ? (panel.wattage / ((panel.length_cm * panel.width_cm) / 10000)).toFixed(0) : null,
+      wattsPerKg: wattsPerWeight(panel.wattage ?? null, panel.weight_kg ?? null, unitSystem),
+      wattsPerSqM: wattsPerArea(panel.wattage ?? null, panel.length_cm ?? null, panel.width_cm ?? null, unitSystem),
     };
   };
 
@@ -239,11 +238,8 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
               <TableCell className="font-medium">Watts/{unitSystem === 'imperial' ? 'lb' : 'kg'}</TableCell>
               {panels.map((panel) => {
                 const metrics = calculateMetrics(panel);
-                if (metrics.wattsPerKg) {
-                  const wattsPerKgNum = parseFloat(metrics.wattsPerKg);
-                  const wattsPerUnit = unitSystem === 'imperial' 
-                    ? (wattsPerKgNum / 0.453592).toFixed(1) // Convert kg to lb
-                    : wattsPerKgNum.toFixed(2);
+                if (metrics.wattsPerKg !== null) {
+                  const wattsPerUnit = metrics.wattsPerKg;
                   return (
                     <TableCell 
                       key={panel.id} 
@@ -280,7 +276,7 @@ export const ComparisonTable = ({ panels, onRemove, unitSystem = 'metric', hover
                     onMouseEnter={() => onPanelHover?.(panel.id)}
                     onMouseLeave={() => onPanelHover?.(null)}
                   >
-                    {metrics.wattsPerSqM ? `${metrics.wattsPerSqM}W/${unitSystem === 'imperial' ? 'ft²' : 'm²'}` : <span className="text-muted-foreground">N/A</span>}
+                    {metrics.wattsPerSqM !== null ? `${metrics.wattsPerSqM}W/${unitSystem === 'imperial' ? 'ft²' : 'm²'}` : <span className="text-muted-foreground">N/A</span>}
                   </TableCell>
                 );
               })}

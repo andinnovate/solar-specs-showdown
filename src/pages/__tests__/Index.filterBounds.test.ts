@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { wattsPerWeight, wattsPerArea, type UnitSystem } from '@/lib/unitConversions';
 import type { Tables } from '@/integrations/supabase/types';
 
 type SolarPanel = Tables<'solar_panels'> & {
@@ -33,7 +34,7 @@ const basePanel: SolarPanel = {
 };
 
 // Function extracted from Index.tsx for testing
-function calculateBounds(panels: SolarPanel[]) {
+function calculateBounds(panels: SolarPanel[], unitSystem: UnitSystem = 'metric') {
   if (panels.length === 0) {
     return {
       wattage: { min: 0, max: 1000 },
@@ -59,8 +60,12 @@ function calculateBounds(panels: SolarPanel[]) {
     const totalWattage = p.wattage! * (p.piece_count || 1);
     return p.price_usd! / totalWattage;
   });
-  const wattsPerKgs = panels.filter(p => p.wattage !== null && p.weight_kg !== null).map(p => p.wattage! / p.weight_kg!);
-  const wattsPerSqMs = panels.filter(p => p.wattage !== null && p.length_cm !== null && p.width_cm !== null).map(p => p.wattage! / ((p.length_cm! * p.width_cm!) / 10000));
+  const wattsPerKgs = panels
+    .map(p => wattsPerWeight(p.wattage ?? null, p.weight_kg ?? null, unitSystem))
+    .filter((value): value is number => value !== null);
+  const wattsPerSqMs = panels
+    .map(p => wattsPerArea(p.wattage ?? null, p.length_cm ?? null, p.width_cm ?? null, unitSystem))
+    .filter((value): value is number => value !== null);
   
   return {
     wattage: validWattages.length > 0 ? {

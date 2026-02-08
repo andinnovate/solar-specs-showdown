@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HistogramSlider } from "@/components/HistogramSlider";
 import { RotateCcw, ChevronDown, ChevronRight, Star, Ruler, Filter } from "lucide-react";
-import { UnitSystem, cmToInches, kgToLbs } from "@/lib/unitConversions";
+import { UnitSystem, cmToInches, kgToLbs, wattsPerWeight, wattsPerArea } from "@/lib/unitConversions";
 import { Tables } from "@/integrations/supabase/types";
 
 type SolarPanel = Tables<"solar_panels"> & {
@@ -68,8 +68,12 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSys
   const wattageData = panels.filter(p => p.wattage !== null).map(p => p.wattage!);
   const voltageData = panels.filter(p => p.voltage !== null).map(p => p.voltage!);
   const weightData = panels.filter(p => p.weight_kg !== null).map(p => unitSystem === 'imperial' ? kgToLbs(p.weight_kg!) : p.weight_kg!);
-  const wattsPerKgData = panels.filter(p => p.wattage !== null && p.weight_kg !== null).map(p => p.wattage! / p.weight_kg!);
-  const wattsPerSqMData = panels.filter(p => p.wattage !== null && p.length_cm !== null && p.width_cm !== null).map(p => p.wattage! / ((p.length_cm! * p.width_cm!) / 10000));
+  const wattsPerKgData = panels
+    .map(p => wattsPerWeight(p.wattage ?? null, p.weight_kg ?? null, unitSystem))
+    .filter((value): value is number => value !== null);
+  const wattsPerSqMData = panels
+    .map(p => wattsPerArea(p.wattage ?? null, p.length_cm ?? null, p.width_cm ?? null, unitSystem))
+    .filter((value): value is number => value !== null);
 
   return (
     <Card>
@@ -292,7 +296,7 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSys
                 <Label className="flex justify-between">
                   <span>W/{unitSystem === 'imperial' ? 'lb' : 'kg'} (Watts per {unitSystem === 'imperial' ? 'lb' : 'kg'})</span>
                   <span className="font-mono text-sm text-muted-foreground">
-                    {filters.wattsPerKgRange[0].toFixed(1)} - {filters.wattsPerKgRange[1].toFixed(1)}
+                    {filters.wattsPerKgRange[0].toFixed(unitSystem === 'imperial' ? 1 : 2)} - {filters.wattsPerKgRange[1].toFixed(unitSystem === 'imperial' ? 1 : 2)}
                   </span>
                 </Label>
                 <Slider
@@ -311,7 +315,7 @@ export const FilterPanel = ({ filters, bounds, panels, favoritePanelIds, unitSys
                 <Label className="flex justify-between">
                   <span>W/{unitSystem === 'imperial' ? 'ft²' : 'm²'} (Watts per {unitSystem === 'imperial' ? 'ft²' : 'm²'})</span>
                   <span className="font-mono text-sm text-muted-foreground">
-                    {filters.wattsPerSqMRange[0].toFixed(0)} - {filters.wattsPerSqMRange[1].toFixed(0)}
+                    {filters.wattsPerSqMRange[0].toFixed(unitSystem === 'imperial' ? 1 : 0)} - {filters.wattsPerSqMRange[1].toFixed(unitSystem === 'imperial' ? 1 : 0)}
                   </span>
                 </Label>
                 <Slider

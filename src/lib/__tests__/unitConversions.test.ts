@@ -7,13 +7,16 @@ import {
   convertLength,
   convertWeight,
   convertArea,
+  convertWattsPerWeightValue,
+  convertWattsPerAreaValue,
   formatDimensions,
   formatDimension,
   formatWeight,
   formatArea,
   formatWeightWithPieces,
   formatWattageWithPieces,
-  type UnitSystem,
+  wattsPerWeight,
+  wattsPerArea,
 } from '../unitConversions';
 
 describe('unitConversions', () => {
@@ -113,6 +116,56 @@ describe('unitConversions', () => {
     });
   });
 
+  describe('convertWattsPerWeightValue', () => {
+    it('should return the same value when unit system matches', () => {
+      expect(convertWattsPerWeightValue(10, 'metric', 'metric')).toBe(10);
+      expect(convertWattsPerWeightValue(10, 'imperial', 'imperial')).toBe(10);
+    });
+
+    it('should convert between W/kg and W/lb correctly', () => {
+      expect(convertWattsPerWeightValue(10, 'metric', 'imperial')).toBeCloseTo(4.53592, 4);
+      expect(convertWattsPerWeightValue(10, 'imperial', 'metric')).toBeCloseTo(22.0462, 4);
+    });
+  });
+
+  describe('convertWattsPerAreaValue', () => {
+    it('should return the same value when unit system matches', () => {
+      expect(convertWattsPerAreaValue(100, 'metric', 'metric')).toBe(100);
+      expect(convertWattsPerAreaValue(100, 'imperial', 'imperial')).toBe(100);
+    });
+
+    it('should convert between W/m² and W/ft² correctly', () => {
+      expect(convertWattsPerAreaValue(100, 'metric', 'imperial')).toBeCloseTo(9.2903, 3);
+      expect(convertWattsPerAreaValue(100, 'imperial', 'metric')).toBeCloseTo(1076.4, 1);
+    });
+  });
+
+  describe('wattsPerWeight', () => {
+    it('should return null for missing inputs', () => {
+      expect(wattsPerWeight(null, 5, 'metric')).toBeNull();
+      expect(wattsPerWeight(100, null, 'metric')).toBeNull();
+      expect(wattsPerWeight(100, 0, 'metric')).toBeNull();
+    });
+
+    it('should calculate W/kg for metric and W/lb for imperial', () => {
+      expect(wattsPerWeight(100, 10, 'metric')).toBe(10);
+      expect(wattsPerWeight(100, 10, 'imperial')).toBeCloseTo(4.5, 1);
+    });
+  });
+
+  describe('wattsPerArea', () => {
+    it('should return null for missing inputs', () => {
+      expect(wattsPerArea(null, 100, 50, 'metric')).toBeNull();
+      expect(wattsPerArea(100, null, 50, 'metric')).toBeNull();
+      expect(wattsPerArea(100, 0, 50, 'metric')).toBeNull();
+    });
+
+    it('should calculate W/m² for metric and W/ft² for imperial', () => {
+      expect(wattsPerArea(100, 100, 50, 'metric')).toBe(200);
+      expect(wattsPerArea(100, 100, 50, 'imperial')).toBeCloseTo(18.6, 1);
+    });
+  });
+
   describe('formatDimensions', () => {
     it('should format metric dimensions correctly', () => {
       expect(formatDimensions(100, 50, 'metric')).toBe('100 × 50 cm');
@@ -196,4 +249,3 @@ describe('unitConversions', () => {
     });
   });
 });
-
