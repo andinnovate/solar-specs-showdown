@@ -54,7 +54,8 @@ export const FlagSubmissionModal = ({
   unitSystem = 'metric'
 }: FlagSubmissionModalProps) => {
   const [flaggedFields, setFlaggedFields] = useState<string[]>([]);
-  const [suggestedCorrections, setSuggestedCorrections] = useState<Record<string, string | number>>({});
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [inputErrors, setInputErrors] = useState<Record<string, string>>({});
   const [userComment, setUserComment] = useState("");
   const [recommendDeletion, setRecommendDeletion] = useState(false);
   const [deletionReason, setDeletionReason] = useState("");
@@ -123,18 +124,48 @@ export const FlagSubmissionModal = ({
     return value;
   };
 
-  // Get display value for input fields (converted to user's unit system)
-  const getInputValue = (field: string) => {
-    const value = suggestedCorrections[field];
-    if (value === undefined || value === null) return "";
-    
-    if (unitSystem === 'imperial' && typeof value === 'number') {
+  const formatInputValue = (field: string, value: string | number) => {
+    if (typeof value === "number" && unitSystem === 'imperial') {
       if (field === 'length_cm') return cmToInches(value).toString();
       if (field === 'width_cm') return cmToInches(value).toString();
       if (field === 'weight_kg') return kgToPounds(value).toString();
     }
-    
     return value.toString();
+  };
+
+  // Get display value for input fields
+  const getInputValue = (field: string) => inputValues[field] ?? "";
+
+  const validateField = (field: string, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "Required";
+    }
+
+    const fieldType = fieldConfig[field as keyof typeof fieldConfig]?.type;
+    if (fieldType === "number") {
+      const numericPattern = /^-?\d+(\.\d+)?$/;
+      if (!numericPattern.test(trimmed)) {
+        return "Enter a valid number";
+      }
+      const num = Number.parseFloat(trimmed);
+      if (!Number.isFinite(num)) {
+        return "Enter a valid number";
+      }
+      if (num < 0) {
+        return "Enter a positive number";
+      }
+      if (field === "piece_count") {
+        if (!Number.isInteger(num)) {
+          return "Enter a whole number";
+        }
+        if (num <= 0) {
+          return "Must be at least 1";
+        }
+      }
+    }
+
+    return "";
   };
 
   const handleFieldToggle = (field: string, checked: boolean) => {
@@ -146,37 +177,72 @@ export const FlagSubmissionModal = ({
       if (config && 'prepopulate' in config && config.prepopulate) {
         const currentValue = panel[field as keyof SolarPanel];
         if (currentValue !== null && currentValue !== undefined) {
-          setSuggestedCorrections(prev => ({
+          setInputValues(prev => ({
             ...prev,
-            [field]: currentValue as string | number
+            [field]: formatInputValue(field, currentValue as string | number)
+          }));
+          setInputErrors(prev => ({
+            ...prev,
+            [field]: ""
           }));
         }
       }
     } else {
       setFlaggedFields(prev => prev.filter(f => f !== field));
       // Remove suggested correction for unchecked field
-      setSuggestedCorrections(prev => {
-        const newCorrections = { ...prev };
-        delete newCorrections[field];
-        return newCorrections;
+      setInputValues(prev => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+      setInputErrors(prev => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
       });
     }
   };
 
   const handleCorrectionChange = (field: string, value: string) => {
-    const fieldType = fieldConfig[field as keyof typeof fieldConfig]?.type;
-    let processedValue: string | number = value;
-    
-    if (fieldType === "number") {
-      const numValue = value === "" ? 0 : parseFloat(value);
-      // Convert to metric for storage
-      processedValue = convertToMetric(field, numValue);
-    }
-    
-    setSuggestedCorrections(prev => ({
+    setInputValues(prev => ({
       ...prev,
-      [field]: processedValue
+      [field]: value
     }));
+    const error = validateField(field, value);
+    setInputErrors(prev => ({
+      ...prev,
+      [field]: error
+    }));
+  };
+
+  const buildSuggestedCorrections = () => {
+    const errors: Record<string, string> = {};
+    const corrections: Record<string, string | number> = {};
+
+    for (const field of flaggedFields) {
+      const rawValue = (inputValues[field] ?? "").trim();
+      const error = validateField(field, rawValue);
+      if (error) {
+        errors[field] = error;
+        continue;
+      }
+
+      const fieldType = fieldConfig[field as keyof typeof fieldConfig]?.type;
+      if (fieldType === "number") {
+        const numValue = Number.parseFloat(rawValue);
+        const metricValue = convertToMetric(field, numValue);
+        corrections[field] = field === "piece_count" ? Math.round(metricValue) : metricValue;
+      } else {
+        corrections[field] = rawValue;
+      }
+    }
+
+    setInputErrors(prev => ({
+      ...prev,
+      ...errors
+    }));
+
+    return { corrections, hasErrors: Object.keys(errors).length > 0 };
   };
 
   const handleSubmit = () => {
@@ -192,9 +258,14 @@ export const FlagSubmissionModal = ({
       return;
     }
 
+    const { corrections, hasErrors } = buildSuggestedCorrections();
+    if (hasErrors) {
+      return;
+    }
+
     onSubmit({
       flaggedFields,
-      suggestedCorrections,
+      suggestedCorrections: corrections,
       userComment,
       recommendDeletion,
       deletionReason: recommendDeletion ? deletionReason : undefined,
@@ -204,7 +275,8 @@ export const FlagSubmissionModal = ({
 
   const handleClose = () => {
     setFlaggedFields([]);
-    setSuggestedCorrections({});
+    setInputValues({});
+    setInputErrors({});
     setUserComment("");
     setRecommendDeletion(false);
     setDeletionReason("");
@@ -218,6 +290,11 @@ export const FlagSubmissionModal = ({
     if (typeof value === "number") return value.toString();
     return value as string;
   };
+
+  const hasValidationErrors = flaggedFields.some(field => {
+    const value = inputValues[field] ?? "";
+    return validateField(field, value) !== "";
+  });
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -306,15 +383,26 @@ export const FlagSubmissionModal = ({
                           className="text-sm resize-y"
                         />
                       ) : (
+                        (() => {
+                          const isNumeric = config.type === "number";
+                          const errorMessage = inputErrors[field];
+                          return (
                         <Input
                           id={`correction-${field}`}
-                          type={config.type}
-                          step={'step' in config ? config.step : undefined}
+                          type={isNumeric ? "text" : config.type}
+                          inputMode={isNumeric ? (field === "piece_count" ? "numeric" : "decimal") : undefined}
+                          pattern={isNumeric ? (field === "piece_count" ? "[0-9]*" : "[0-9]*[.,]?[0-9]*") : undefined}
                           placeholder={config.placeholder}
                           value={getInputValue(field)}
                           onChange={(e) => handleCorrectionChange(field, e.target.value)}
                           className="text-sm"
+                          aria-invalid={!!errorMessage}
                         />
+                          );
+                        })()
+                      )}
+                      {inputErrors[field] && (
+                        <p className="text-xs text-destructive">{inputErrors[field]}</p>
                       )}
                     </div>
                   )}
@@ -422,7 +510,7 @@ export const FlagSubmissionModal = ({
             </Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={(flaggedFields.length === 0 && !recommendDeletion) || loading || (recommendDeletion && !deletionReason) || (recommendDeletion && deletionReason === 'other' && !deletionOtherReason.trim())}
+              disabled={(flaggedFields.length === 0 && !recommendDeletion) || loading || (flaggedFields.length > 0 && hasValidationErrors) || (recommendDeletion && !deletionReason) || (recommendDeletion && deletionReason === 'other' && !deletionOtherReason.trim())}
               className="bg-red-600 hover:bg-red-700"
             >
               {loading ? "Submitting..." : (

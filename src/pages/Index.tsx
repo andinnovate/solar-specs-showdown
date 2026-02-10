@@ -521,7 +521,11 @@ const Index = () => {
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-secondary">
-                <Sun className="w-8 h-8 text-white" />
+                <img
+                  src="/logo.svg"
+                  alt="Solar Panel Comparison"
+                  className="w-8 h-8"
+                />
               </div>
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
