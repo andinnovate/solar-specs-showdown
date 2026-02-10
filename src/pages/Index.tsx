@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SolarPanelCard } from "@/components/SolarPanelCard";
 import { FilterPanel } from "@/components/FilterPanel";
@@ -40,6 +40,17 @@ const Index = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showComparison, setShowComparison] = useState(false);
   const [hoveredPanelId, setHoveredPanelId] = useState<string | null>(null);
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
+    // Load from localStorage, default to 'metric'
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('solar-panel-unit-system');
+      return (saved as UnitSystem) || 'metric';
+    }
+    return 'metric';
+  });
+  const unitSystemRef = useRef<UnitSystem>(unitSystem);
+  const [visibleCount, setVisibleCount] = useState(24);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   
   const handlePanelHover = (panelId: string | null) => {
     setHoveredPanelId(panelId);
@@ -98,14 +109,6 @@ const Index = () => {
   const [user, setUser] = useState<{ id?: string; email?: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
-  const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
-    // Load from localStorage, default to 'metric'
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('solar-panel-unit-system');
-      return (saved as UnitSystem) || 'metric';
-    }
-    return 'metric';
-  });
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
 
   // Wrapper function to save unit system to localStorage
@@ -169,25 +172,10 @@ const Index = () => {
   } = useUserPanelPreferences(user?.id);
 
   useEffect(() => {
-    loadPanels();
-    
-    // Check auth state
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      setIsAdmin(isAdminUser(user));
-    });
+    unitSystemRef.current = unitSystem;
+  }, [unitSystem]);
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      setIsAdmin(isAdminUser(currentUser));
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const loadPanels = async () => {
+  const loadPanels = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('solar_panels')
@@ -228,11 +216,12 @@ const Index = () => {
           const totalWattage = p.wattage! * (p.piece_count || 1);
           return p.price_usd! / totalWattage;
         });
+        const currentUnitSystem = unitSystemRef.current;
         const validWattsPerKgs = transformedData
-          .map(p => wattsPerWeight(p.wattage ?? null, p.weight_kg ?? null, unitSystem))
+          .map(p => wattsPerWeight(p.wattage ?? null, p.weight_kg ?? null, currentUnitSystem))
           .filter((value): value is number => value !== null);
         const validWattsPerSqMs = transformedData
-          .map(p => wattsPerArea(p.wattage ?? null, p.length_cm ?? null, p.width_cm ?? null, unitSystem))
+          .map(p => wattsPerArea(p.wattage ?? null, p.length_cm ?? null, p.width_cm ?? null, currentUnitSystem))
           .filter((value): value is number => value !== null);
         
         setFilters({
@@ -255,7 +244,26 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadPanels();
+    
+    // Check auth state
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+      setIsAdmin(isAdminUser(user));
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setIsAdmin(isAdminUser(currentUser));
+    });
+
+    return () => subscription.unsubscribe();
+  }, [loadPanels]);
 
   const bounds = useMemo(() => {
     if (panels.length === 0) {
@@ -333,12 +341,12 @@ const Index = () => {
   const filteredPanels = useMemo(() => {
     return panels.filter(panel => {
       // Filter out hidden panels if user is logged in (but keep fading out panels for animation)
-      if (user && isPanelHidden(panel.id) && !fadingOutPanels.has(panel.id)) {
+      if (user && hiddenPanels.has(panel.id) && !fadingOutPanels.has(panel.id)) {
         return false;
       }
 
       // Filter for favorites only if enabled
-      if (filters.showFavoritesOnly && user && !isPanelFavorite(panel.id)) {
+      if (filters.showFavoritesOnly && user && !favoritePanels.has(panel.id)) {
         return false;
       }
 
@@ -376,7 +384,7 @@ const Index = () => {
         (wattsPerKg === null || (wattsPerKg >= filters.wattsPerKgRange[0] && wattsPerKg <= filters.wattsPerKgRange[1])) &&
         (wattsPerSqM === null || (wattsPerSqM >= filters.wattsPerSqMRange[0] && wattsPerSqM <= filters.wattsPerSqMRange[1]));
     });
-  }, [panels, filters, user, isPanelHidden, isPanelFavorite, fadingOutPanels, unitSystem]);
+  }, [panels, filters, user, hiddenPanels, favoritePanels, fadingOutPanels, unitSystem]);
 
   const sortedPanels = useMemo(() => {
     const sorted = [...filteredPanels];
@@ -414,6 +422,39 @@ const Index = () => {
         return sorted;
     }
   }, [filteredPanels, sortBy, unitSystem]);
+
+  const displayedPanels = useMemo(() => {
+    return sortedPanels.slice(0, visibleCount);
+  }, [sortedPanels, visibleCount]);
+
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [filters, sortBy, viewMode, unitSystem, hiddenPanels, favoritePanels, user, panels.length]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    if (visibleCount >= sortedPanels.length) {
+      return;
+    }
+
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount(prev => Math.min(prev + 24, sortedPanels.length));
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [sortedPanels.length, visibleCount]);
 
   const comparedPanels = useMemo(() => {
     return panels.filter(p => selectedIds.has(p.id));
@@ -751,7 +792,7 @@ const Index = () => {
               
               {viewMode === 'cards' ? (
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {sortedPanels.map(panel => (
+                  {displayedPanels.map(panel => (
             <SolarPanelCard 
               key={panel.id}
               panel={panel}
@@ -782,7 +823,7 @@ const Index = () => {
                   </div>
                   
                   {/* List Items */}
-                  {sortedPanels.map((panel, index) => {
+                  {displayedPanels.map((panel) => {
                     const pricePerWatt = panel.price_usd / panel.wattage;
                     const efficiency = wattsPerArea(panel.wattage ?? null, panel.length_cm ?? null, panel.width_cm ?? null, unitSystem);
                     const isSelected = selectedIds.has(panel.id);
@@ -856,6 +897,10 @@ const Index = () => {
                     );
                   })}
                 </div>
+              )}
+
+              {displayedPanels.length < sortedPanels.length && (
+                <div ref={loadMoreRef} className="h-8" />
               )}
             </div>
 
