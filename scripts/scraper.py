@@ -1395,3 +1395,53 @@ class ScraperAPIClient:
                 asins.append(asin)
         
         return asins
+    
+    def extract_prices_from_search(self, search_results: Dict) -> Dict[str, float]:
+        """
+        Extract ASIN -> price (USD) from ScraperAPI autoparsed search results.
+        Used for search-first price updates to avoid a product-detail API call per panel.
+        If the same ASIN appears in multiple products, the last seen price wins.
+        
+        Args:
+            search_results: Autoparsed search results from search_amazon() (dict with 'products' list).
+            
+        Returns:
+            Dict mapping ASIN to price_float (USD). Products without valid ASIN or price are skipped.
+            
+        Price handling:
+            - If product['price'] is a dict with 'value', use it (prefer USD).
+            - If product['price'] is a string, use UnitConverter.parse_price_string().
+        """
+        if not search_results or 'products' not in search_results:
+            return {}
+        
+        asin_to_price: Dict[str, float] = {}
+        for product in search_results['products']:
+            asin = product.get('asin')
+            if not asin and 'link' in product:
+                match = re.search(r'/dp/([A-Z0-9]{10})', product['link'])
+                if match:
+                    asin = match.group(1)
+            if not asin:
+                continue
+            
+            price_raw = product.get('price')
+            price_usd: Optional[float] = None
+            
+            if isinstance(price_raw, dict):
+                if 'value' in price_raw:
+                    try:
+                        price_usd = float(price_raw['value'])
+                        if price_usd is not None:
+                            price_usd = round(price_usd, 2)
+                    except (TypeError, ValueError):
+                        pass
+                if price_usd is None and price_raw.get('raw'):
+                    price_usd = UnitConverter.parse_price_string(str(price_raw['raw']))
+            elif isinstance(price_raw, (str, int, float)):
+                price_usd = UnitConverter.parse_price_string(str(price_raw))
+            
+            if price_usd is not None and price_usd > 0:
+                asin_to_price[asin] = price_usd
+        
+        return asin_to_price

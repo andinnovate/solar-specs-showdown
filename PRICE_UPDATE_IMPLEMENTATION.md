@@ -59,16 +59,25 @@ python scripts/fetch_solar_panels.py --file asins.csv --delay 2.0 --max-retries 
 **Purpose**: Batch update prices for existing panels in the database.
 
 **Features**:
-- Finds panels needing price updates (by `updated_at` date)
-- Fetches current prices from Amazon via ScraperAPI
-- Updates prices only if changed
-- Tracks price changes and errors
-- Supports updating specific ASINs or all panels needing updates
+- **Search-first (default)**: Runs ScraperAPI search(es) to get ASIN→price for many products in few API calls; updates panels from that map, then falls back to per-ASIN product detail for panels not found in search.
+- **Product-only (`--product-only`)**: Skips search; uses one product-detail API call per panel (legacy behavior).
+- Finds panels needing price updates (by `updated_at` date or `--asins`)
+- Tracks price changes, errors, and source (search vs product)
+- Records price history with `source`: `scraperapi_search` or `scraperapi`
 
 **Usage**:
 ```bash
-# Update panels last updated >7 days ago (default)
+# Search-first (default): run searches then fall back to product detail for missing ASINs
 python scripts/update_prices.py
+
+# Search-only: update every panel in DB that appears in search results (no --limit)
+python scripts/update_prices.py --search-only
+
+# Product-only: skip search, one product-detail call per panel (legacy)
+python scripts/update_prices.py --product-only
+
+# Custom search keywords and pages (more search coverage)
+python scripts/update_prices.py --search-keywords "solar panel" "400w solar" --search-pages 3
 
 # Update panels last updated >30 days ago, limit to 50
 python scripts/update_prices.py --days-old 30 --limit 50
@@ -80,12 +89,20 @@ python scripts/update_prices.py --asins B0C99GS958 B0CB9X9XX1
 python scripts/update_prices.py --verbose --notify
 ```
 
+**Search-first options**:
+- `--search-keywords K [K ...]` – Keywords for search phase (default: `solar panel`, `solar panel 400w`).
+- `--search-pages N` – Number of pages per keyword (default: 2).
+- `--product-only` – Disable search phase; use only per-ASIN product detail.
+- `--search-only` – **Search-driven mode**: run search(es), then update **every panel in the DB** whose ASIN appears in the search results. Ignores `--limit`, `--days-old`, and `--asins`; no product-detail fallback. Use this to refresh prices for all catalog panels that show up in the current search result set.
+- `--stats-only` – Show price-update statistics and recent updates, then exit (no API calls). Use `--days-old` to vary the “needing update” threshold.
+
 **Price Update Logic**:
-- Queries panels by `updated_at` timestamp
-- Fetches current price from Amazon
-- Updates only if price changed
-- Records price history
-- Skips panels with no ASIN
+- **(Search phase)** If not `--product-only`, run search for each (keyword, page); merge results into ASIN→price map.
+- Split panels: those with ASIN in map and valid price → update from search; rest → fall back to product detail.
+- From search: update DB with `source='scraperapi_search'` (no per-ASIN API call).
+- Fallback: fetch product by ASIN, parse price, update with `source='scraperapi'`.
+- Same validation for both paths: reject $0, update timestamp when price unchanged, record price history.
+- Skips panels with no ASIN.
 
 ## Database Schema
 
@@ -94,7 +111,7 @@ python scripts/update_prices.py --verbose --notify
 - **`price_history`** table - Tracks price changes over time
   - `old_price` - Previous price
   - `new_price` - New price
-  - `source` - Update source (e.g., 'scraperapi')
+  - `source` - Update source: `scraperapi` (product detail) or `scraperapi_search` (search results)
   - `created_at` - Timestamp of change
 
 ### Price Update Method

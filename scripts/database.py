@@ -337,6 +337,65 @@ class SolarPanelDB:
                 f'Failed to get scraper stats: {str(e)}'
             )
             return {}
+
+    async def get_price_update_stats(self, days_old: int = 7, recent_limit: int = 10, max_needing: int = 10000) -> Dict:
+        """
+        Get stats for update_prices report: panels with ASIN, needing update, recent price history.
+        """
+        try:
+            from datetime import datetime, timedelta, timezone
+            # Panels needing update (updated more than days_old ago, have ASIN)
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
+            needing = self.client.table('solar_panels').select('id').not_.is_('asin', 'null').neq('asin', '').lt('updated_at', cutoff).limit(max_needing).execute()
+            panels_needing_update = len(needing.data)
+            capped_needing = panels_needing_update >= max_needing
+
+            # Total panels with ASIN (cap for performance)
+            with_asin = self.client.table('solar_panels').select('id').not_.is_('asin', 'null').neq('asin', '').limit(max_needing).execute()
+            total_with_asin = len(with_asin.data)
+            capped_total = total_with_asin >= max_needing
+
+            # Recent price history (last N rows)
+            hist = self.client.table('price_history').select('panel_id, old_price, new_price, source, created_at').order('created_at', desc=True).limit(recent_limit).execute()
+            recent = list(hist.data or [])
+            panel_ids = [r['panel_id'] for r in recent]
+            names_by_id = {}
+            if panel_ids:
+                panels = self.client.table('solar_panels').select('id, name, asin').in_('id', panel_ids).execute()
+                for p in (panels.data or []):
+                    names_by_id[p['id']] = {'name': p.get('name', '—'), 'asin': p.get('asin', '—')}
+            recent_with_names = []
+            for r in recent:
+                info = names_by_id.get(r['panel_id'], {'name': '—', 'asin': '—'})
+                recent_with_names.append({
+                    'name': info['name'],
+                    'asin': info['asin'],
+                    'old_price': r.get('old_price'),
+                    'new_price': r.get('new_price'),
+                    'source': r.get('source', '—'),
+                    'created_at': r.get('created_at'),
+                })
+
+            # Scraper usage for update_prices in last 7 days
+            seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+            usage = self.client.table('scraper_usage').select('*').eq('script_name', 'update_prices').gte('created_at', seven_days_ago).execute()
+            usage_data = usage.data or []
+            usage_total = len(usage_data)
+            usage_success = len([u for u in usage_data if u.get('success')])
+
+            return {
+                'total_panels_with_asin': total_with_asin,
+                'total_capped': capped_total,
+                'panels_needing_update': panels_needing_update,
+                'needing_capped': capped_needing,
+                'days_old': days_old,
+                'recent_updates': recent_with_names,
+                'scraper_requests_7d': usage_total,
+                'scraper_success_7d': usage_success,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get price update stats: {e}")
+            return {}
     
     # ==================== ASIN Management Methods ====================
     
@@ -407,3 +466,18 @@ class SolarPanelDB:
         except Exception as e:
             logger.error(f"Failed to get panel by ASIN: {e}")
             return None
+
+    async def get_panels_by_asins(self, asins: List[str]) -> List[Dict]:
+        """
+        Get all panels whose asin is in the given list (single query).
+        Used by --search-only price updates to resolve which search-result ASINs exist in DB.
+        """
+        if not asins:
+            return []
+        try:
+            # Supabase .in_() for list; avoid overly large IN lists
+            result = self.client.table('solar_panels').select('*').in_('asin', list(asins)).execute()
+            return result.data or []
+        except Exception as e:
+            logger.error(f"Failed to get panels by ASINs: {e}")
+            return []
