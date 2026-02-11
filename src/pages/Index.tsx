@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
 import {
   UnitSystem,
+  convertWeight,
   formatDimensions,
   formatWeight,
   wattsPerWeight,
@@ -21,6 +22,7 @@ import {
   convertWattsPerWeightValue,
   convertWattsPerAreaValue,
 } from "@/lib/unitConversions";
+import { computeStatThresholds, StatMetric, StatThresholdMap } from "@/lib/statBands";
 import { isAdminUser } from "@/lib/adminUtils";
 import { Tables } from "@/integrations/supabase/types";
 import { addAmazonAffiliateTag } from "@/lib/utils";
@@ -335,6 +337,63 @@ const Index = () => {
         min: Math.min(...wattsPerSqMs),
         max: Math.max(...wattsPerSqMs)
       } : { min: 0, max: 300 },
+    };
+  }, [panels, unitSystem]);
+
+  const statThresholds = useMemo<StatThresholdMap>(() => {
+    const values: Record<StatMetric, number[]> = {
+      price: [],
+      pricePerWatt: [],
+      wattage: [],
+      wattsPerWeight: [],
+      wattsPerArea: [],
+      weight: [],
+    };
+
+    panels.forEach(panel => {
+      const pieceCount = panel.piece_count || 1;
+      const totalWattage = panel.wattage ? panel.wattage * pieceCount : null;
+
+      if (totalWattage && totalWattage > 0) {
+        values.wattage.push(totalWattage);
+      }
+
+      if (panel.price_usd && panel.price_usd > 0) {
+        values.price.push(panel.price_usd);
+        if (totalWattage && totalWattage > 0) {
+          const pricePerWatt = panel.price_usd / totalWattage;
+          if (Number.isFinite(pricePerWatt) && pricePerWatt > 0) {
+            values.pricePerWatt.push(Math.round(pricePerWatt * 100) / 100);
+          }
+        }
+      }
+
+      if (panel.weight_kg && panel.weight_kg > 0) {
+        const totalWeightKg = panel.weight_kg * pieceCount;
+        const weightValue = convertWeight(totalWeightKg, unitSystem).value;
+        if (Number.isFinite(weightValue) && weightValue > 0) {
+          values.weight.push(weightValue);
+        }
+      }
+
+      const wattsPerWeightValue = wattsPerWeight(panel.wattage ?? null, panel.weight_kg ?? null, unitSystem);
+      if (wattsPerWeightValue !== null && wattsPerWeightValue > 0) {
+        values.wattsPerWeight.push(wattsPerWeightValue);
+      }
+
+      const wattsPerAreaValue = wattsPerArea(panel.wattage ?? null, panel.length_cm ?? null, panel.width_cm ?? null, unitSystem);
+      if (wattsPerAreaValue !== null && wattsPerAreaValue > 0) {
+        values.wattsPerArea.push(wattsPerAreaValue);
+      }
+    });
+
+    return {
+      price: computeStatThresholds(values.price),
+      pricePerWatt: computeStatThresholds(values.pricePerWatt),
+      wattage: computeStatThresholds(values.wattage),
+      wattsPerWeight: computeStatThresholds(values.wattsPerWeight),
+      wattsPerArea: computeStatThresholds(values.wattsPerArea),
+      weight: computeStatThresholds(values.weight),
     };
   }, [panels, unitSystem]);
 
@@ -805,6 +864,7 @@ const Index = () => {
               onToggleFavorite={togglePanelFavorite}
               showUserActions={!!user}
               unitSystem={unitSystem}
+              statThresholds={statThresholds}
             />
                   ))}
                 </div>

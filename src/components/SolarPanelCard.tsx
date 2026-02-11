@@ -3,12 +3,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calculator, Zap, Weight, Ruler, ExternalLink, Eye, EyeOff, Star, AlertCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { UnitSystem, formatDimensions, formatWeight, formatArea, formatWeightWithPieces, wattsPerWeight, wattsPerArea } from "@/lib/unitConversions";
+import { UnitSystem, convertWeight, formatDimensions, formatArea, formatWeightWithPieces, wattsPerWeight, wattsPerArea } from "@/lib/unitConversions";
 import { FlagIcon } from "@/components/FlagIcon";
 import { FlagSubmissionModal } from "@/components/FlagSubmissionModal";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { addAmazonAffiliateTag } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { bandToClass, getOutlierLevel, getStatBand, outlierIndicatorText, OutlierLevel, StatMetric, StatThresholdMap, STAT_DIRECTIONS } from "@/lib/statBands";
 
 type SolarPanel = Tables<"solar_panels"> & {
   user_verified_overrides?: string[] | null;
@@ -27,6 +29,7 @@ interface SolarPanelCardProps {
   onToggleFavorite?: (id: string) => void;
   showUserActions?: boolean;
   unitSystem?: UnitSystem;
+  statThresholds?: StatThresholdMap;
 }
 
 export const SolarPanelCard = ({ 
@@ -39,7 +42,8 @@ export const SolarPanelCard = ({
   onToggleHidden, 
   onToggleFavorite, 
   showUserActions = false,
-  unitSystem = 'metric'
+  unitSystem = 'metric',
+  statThresholds
 }: SolarPanelCardProps) => {
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [flagLoading, setFlagLoading] = useState(false);
@@ -93,10 +97,47 @@ export const SolarPanelCard = ({
   };
   
   // Calculate price per watt using total wattage (wattage × piece_count)
-  const totalWattage = panel.wattage ? panel.wattage * (panel.piece_count || 1) : null;
-  const pricePerWatt = totalWattage && panel.price_usd && panel.price_usd > 0 ? (panel.price_usd / totalWattage).toFixed(2) : null;
+  const pieceCount = panel.piece_count || 1;
+  const totalWattage = panel.wattage ? panel.wattage * pieceCount : null;
+  const priceValue = panel.price_usd && panel.price_usd > 0 ? panel.price_usd : null;
+  const pricePerWattValue = totalWattage && priceValue ? Math.round((priceValue / totalWattage) * 100) / 100 : null;
+  const pricePerWattDisplay = pricePerWattValue !== null ? pricePerWattValue.toFixed(2) : null;
   const wattsPerKg = wattsPerWeight(panel.wattage ?? null, panel.weight_kg ?? null, unitSystem);
   const wattsPerSqM = wattsPerArea(panel.wattage ?? null, panel.length_cm ?? null, panel.width_cm ?? null, unitSystem);
+  const totalWeightValue = panel.weight_kg && panel.weight_kg > 0
+    ? convertWeight(panel.weight_kg * pieceCount, unitSystem).value
+    : null;
+
+  const getStatPresentation = (metric: StatMetric, value: number | null, fallbackClass: string) => {
+    const thresholds = statThresholds?.[metric] ?? null;
+    const band = getStatBand(value, thresholds, STAT_DIRECTIONS[metric]);
+    const bandClass = bandToClass(band);
+    const outlierLevel = getOutlierLevel(value, thresholds);
+    return {
+      className: bandClass || fallbackClass,
+      outlierLevel,
+    };
+  };
+
+  const renderOutlierIndicator = (level: OutlierLevel) => {
+    const indicator = outlierIndicatorText(level);
+    if (!indicator) {
+      return null;
+    }
+    const title = level === 'extreme' ? 'Extreme outlier (IQR)' : 'Outlier (IQR)';
+    return (
+      <span className="ml-1 text-red-600 font-bold" title={title} aria-label={title}>
+        {indicator}
+      </span>
+    );
+  };
+
+  const wattagePresentation = getStatPresentation('wattage', totalWattage, '');
+  const pricePresentation = getStatPresentation('price', priceValue, 'text-primary');
+  const pricePerWattPresentation = getStatPresentation('pricePerWatt', pricePerWattValue, 'text-secondary');
+  const weightPresentation = getStatPresentation('weight', totalWeightValue, 'text-foreground');
+  const wattsPerWeightPresentation = getStatPresentation('wattsPerWeight', wattsPerKg, 'text-accent');
+  const wattsPerAreaPresentation = getStatPresentation('wattsPerArea', wattsPerSqM, 'text-accent');
 
   return (
     <Card className={`overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${
@@ -213,8 +254,9 @@ export const SolarPanelCard = ({
           </div>
           {panel.wattage ? (
             <div className="text-right">
-              <Badge variant="secondary" className="text-lg font-bold">
-                {panel.wattage * (panel.piece_count || 1)}W
+              <Badge variant="secondary" className={cn("text-lg font-bold", wattagePresentation.className)}>
+                {totalWattage}W
+                {renderOutlierIndicator(wattagePresentation.outlierLevel)}
               </Badge>
               {(panel.piece_count || 1) > 1 && (
                 <div className="text-xs text-muted-foreground mt-1">
@@ -265,7 +307,10 @@ export const SolarPanelCard = ({
             <Weight className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Weight:</span>
             {panel.weight_kg ? (
-              <span className="font-medium">{formatWeightWithPieces(panel.weight_kg, panel.piece_count || 1, unitSystem)}</span>
+              <span className={cn("font-medium", weightPresentation.className)}>
+                {formatWeightWithPieces(panel.weight_kg, panel.piece_count || 1, unitSystem)}
+                {renderOutlierIndicator(weightPresentation.outlierLevel)}
+              </span>
             ) : (
               <span className="text-sm text-muted-foreground">
                 Not available
@@ -304,8 +349,11 @@ export const SolarPanelCard = ({
           <div className="flex items-center gap-2 text-sm">
             <Calculator className="w-4 h-4 text-secondary" />
             <span className="text-muted-foreground">$/W:</span>
-            {pricePerWatt ? (
-              <span className="font-bold text-secondary">${pricePerWatt}</span>
+            {pricePerWattDisplay ? (
+              <span className={cn("font-bold", pricePerWattPresentation.className)}>
+                ${pricePerWattDisplay}
+                {renderOutlierIndicator(pricePerWattPresentation.outlierLevel)}
+              </span>
             ) : (
               <span className="text-sm text-muted-foreground">N/A</span>
             )}
@@ -315,8 +363,9 @@ export const SolarPanelCard = ({
             <Zap className="w-4 h-4 text-accent" />
             <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'lb' : 'kg'}:</span>
             {wattsPerKg !== null ? (
-              <span className="font-bold text-accent">
+              <span className={cn("font-bold", wattsPerWeightPresentation.className)}>
                 {wattsPerKg}
+                {renderOutlierIndicator(wattsPerWeightPresentation.outlierLevel)}
               </span>
             ) : (
               <span className="text-sm text-muted-foreground">N/A</span>
@@ -327,7 +376,10 @@ export const SolarPanelCard = ({
             <Zap className="w-4 h-4 text-accent" />
             <span className="text-muted-foreground">W/{unitSystem === 'imperial' ? 'ft²' : 'm²'}:</span>
             {wattsPerSqM !== null ? (
-              <span className="font-bold text-accent">{wattsPerSqM}</span>
+              <span className={cn("font-bold", wattsPerAreaPresentation.className)}>
+                {wattsPerSqM}
+                {renderOutlierIndicator(wattsPerAreaPresentation.outlierLevel)}
+              </span>
             ) : (
               <span className="text-sm text-muted-foreground">N/A</span>
             )}
@@ -341,8 +393,9 @@ export const SolarPanelCard = ({
                 Currently Unavailable
               </span>
             ) : panel.price_usd ? (
-              <span className="text-2xl font-bold text-primary">
+              <span className={cn("text-2xl font-bold", pricePresentation.className)}>
                 ${panel.price_usd.toFixed(2)}
+                {renderOutlierIndicator(pricePresentation.outlierLevel)}
               </span>
             ) : (
               <span className="text-lg text-muted-foreground">
