@@ -6,7 +6,12 @@ Tests price update functionality, $0 price rejection, and timestamp updates.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from scripts.update_prices import update_panel_price, save_raw_scraper_data
+from scripts.update_prices import (
+    update_panel_price,
+    update_panel_price_from_search,
+    run_search_phase,
+    save_raw_scraper_data,
+)
 from scripts.database import SolarPanelDB
 from scripts.scraper import ScraperAPIClient, ScraperAPIForbiddenError
 from scripts.error_handling import RetryHandler
@@ -470,4 +475,114 @@ class TestUpdatePricesIntegration:
             )
             
             assert result['success'] is True
+
+
+class TestUpdatePanelPriceFromSearch:
+    """Tests for search-sourced price updates (no per-ASIN API call)."""
+
+    @pytest.fixture
+    def mock_db(self):
+        db = MagicMock(spec=SolarPanelDB)
+        db.update_panel_price = AsyncMock(return_value=True)
+        db.update_panel_timestamp = AsyncMock(return_value=True)
+        return db
+
+    @pytest.fixture
+    def mock_logger(self):
+        logger = MagicMock()
+        logger.log_script_event = MagicMock()
+        return logger
+
+    @pytest.fixture
+    def sample_panel(self):
+        return {
+            'id': 'panel-123',
+            'asin': 'B0TEST123',
+            'name': 'Test Solar Panel',
+            'price_usd': 99.99,
+        }
+
+    @pytest.mark.asyncio
+    async def test_from_search_success(self, mock_db, mock_logger, sample_panel):
+        """Update from search map when price changed."""
+        asin_to_price = {'B0TEST123': 89.99}
+        result = await update_panel_price_from_search(
+            sample_panel, asin_to_price, mock_db, mock_logger
+        )
+        assert result['success'] is True
+        assert result['old_price'] == 99.99
+        assert result['new_price'] == 89.99
+        mock_db.update_panel_price.assert_called_once_with(
+            'panel-123', 89.99, source='scraperapi_search'
+        )
+
+    @pytest.mark.asyncio
+    async def test_from_search_unchanged_updates_timestamp(self, mock_db, mock_logger, sample_panel):
+        """When price unchanged, only timestamp updated."""
+        asin_to_price = {'B0TEST123': 99.99}
+        result = await update_panel_price_from_search(
+            sample_panel, asin_to_price, mock_db, mock_logger
+        )
+        assert result['success'] is True
+        assert result.get('unchanged') is True
+        mock_db.update_panel_timestamp.assert_called_once_with('panel-123')
+        mock_db.update_panel_price.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_from_search_asin_not_in_map(self, mock_db, mock_logger, sample_panel):
+        """When ASIN not in search map, return error (fallback to product detail)."""
+        asin_to_price = {}
+        result = await update_panel_price_from_search(
+            sample_panel, asin_to_price, mock_db, mock_logger
+        )
+        assert result['success'] is False
+        assert result['error'] == 'ASIN not in search results'
+        mock_db.update_panel_price.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_from_search_rejects_zero(self, mock_db, mock_logger, sample_panel):
+        """$0 price from search is rejected."""
+        asin_to_price = {'B0TEST123': 0.0}
+        result = await update_panel_price_from_search(
+            sample_panel, asin_to_price, mock_db, mock_logger
+        )
+        assert result['success'] is False
+        assert '0' in result['error']
+        mock_db.update_panel_price.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_from_search_no_asin(self, mock_db, mock_logger):
+        """Panel without ASIN fails."""
+        panel = {'id': 'p1', 'name': 'No ASIN', 'price_usd': 10.0}
+        result = await update_panel_price_from_search(
+            panel, {'X': 1.0}, mock_db, mock_logger
+        )
+        assert result['success'] is False
+        assert 'No ASIN' in result['error']
+
+
+class TestRunSearchPhase:
+    """Tests for search phase (build ASIN->price map)."""
+
+    @pytest.mark.asyncio
+    async def test_merge_search_results_into_map(self):
+        """run_search_phase merges all search results into one ASIN->price map."""
+        scraper = MagicMock(spec=ScraperAPIClient)
+        scraper.search_amazon = MagicMock(return_value=None)
+        scraper.extract_prices_from_search = MagicMock(side_effect=[
+            {'B0ONE': 50.0},
+            {'B0TWO': 60.0, 'B0ONE': 51.0},
+        ])
+        retry = MagicMock(spec=RetryHandler)
+        retry.execute_with_retry = AsyncMock(side_effect=[
+            {'products': [{'asin': 'B0ONE', 'price': {'value': 50}}]},
+            {'products': [{'asin': 'B0TWO', 'price': {'value': 60}}, {'asin': 'B0ONE', 'price': {'value': 51}}]},
+        ])
+        logger = MagicMock()
+        logger.log_script_event = MagicMock()
+        result = await run_search_phase(
+            scraper, retry, ['kw1', 'kw2'], 1, 0.0, logger
+        )
+        assert result['B0ONE'] == 51.0
+        assert result['B0TWO'] == 60.0
 

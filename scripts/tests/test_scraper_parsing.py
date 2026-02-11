@@ -12,7 +12,7 @@ import os
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from scripts.scraper import UnitConverter, ScraperAPIParser
+from scripts.scraper import UnitConverter, ScraperAPIParser, ScraperAPIClient
 
 
 class TestUnitConversions:
@@ -373,6 +373,81 @@ class TestLengthWidthOrdering:
             assert result is not None, f"Failed to parse: {dim_string}"
             length, width = result
             assert length >= width, f"Length ({length}) should be >= width ({width}) for: {dim_string}"
+
+
+class TestExtractPricesFromSearch:
+    """Test extract_prices_from_search for search-first price updates."""
+
+    def test_price_object_value(self):
+        """Price as dict with 'value' is extracted."""
+        client = ScraperAPIClient()
+        results = {
+            'products': [
+                {'asin': 'B0C99GS958', 'price': {'value': 69.99, 'currency': 'USD', 'raw': '$69.99'}},
+                {'asin': 'B0OTHER01', 'price': {'value': 129.99}},
+            ]
+        }
+        out = client.extract_prices_from_search(results)
+        assert out == {'B0C99GS958': 69.99, 'B0OTHER01': 129.99}
+
+    def test_price_string_parsed(self):
+        """Price as string is parsed via UnitConverter."""
+        client = ScraperAPIClient()
+        results = {
+            'products': [
+                {'asin': 'B0STR01', 'price': '$89.99'},
+                {'asin': 'B0STR02', 'price': '1,299.99'},
+            ]
+        }
+        out = client.extract_prices_from_search(results)
+        assert out['B0STR01'] == 89.99
+        assert out['B0STR02'] == 1299.99
+
+    def test_asin_from_link_fallback(self):
+        """ASIN extracted from link when 'asin' key missing."""
+        client = ScraperAPIClient()
+        results = {
+            'products': [
+                {'link': 'https://www.amazon.com/dp/B0LINK0101', 'price': {'value': 49.99}},
+            ]
+        }
+        out = client.extract_prices_from_search(results)
+        assert out == {'B0LINK0101': 49.99}
+
+    def test_skip_no_asin(self):
+        """Products without ASIN or price are skipped."""
+        client = ScraperAPIClient()
+        results = {
+            'products': [
+                {'price': {'value': 99.99}},
+                {'asin': 'B0NO price'},
+                {'asin': 'B0ZERO', 'price': {'value': 0}},
+                {'asin': 'B0INVALID', 'price': 'See price in cart'},
+            ]
+        }
+        out = client.extract_prices_from_search(results)
+        assert 'B0NO price' not in out
+        assert 'B0ZERO' not in out
+        assert 'B0INVALID' not in out
+
+    def test_last_seen_wins_duplicate_asin(self):
+        """When same ASIN appears twice, last price wins."""
+        client = ScraperAPIClient()
+        results = {
+            'products': [
+                {'asin': 'B0DUP', 'price': {'value': 100.0}},
+                {'asin': 'B0DUP', 'price': {'value': 105.0}},
+            ]
+        }
+        out = client.extract_prices_from_search(results)
+        assert out['B0DUP'] == 105.0
+
+    def test_empty_or_missing_products(self):
+        """Empty or missing 'products' returns empty dict."""
+        client = ScraperAPIClient()
+        assert client.extract_prices_from_search({}) == {}
+        assert client.extract_prices_from_search({'products': []}) == {}
+        assert client.extract_prices_from_search({'other': []}) == {}
 
 
 class TestEdgeCases:
