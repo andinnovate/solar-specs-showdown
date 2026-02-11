@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Sun, Grid, Table, List, ArrowUpDown, User, Settings, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
@@ -112,6 +114,20 @@ const Index = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+  const [colorizeStats, setColorizeStats] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('solar-panel-colorize-stats');
+      if (saved === 'true') return true;
+      if (saved === 'false') return false;
+    }
+    return true;
+  });
+  const handleColorizeStatsChange = useCallback((checked: boolean) => {
+    setColorizeStats(checked);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('solar-panel-colorize-stats', checked ? 'true' : 'false');
+    }
+  }, []);
 
   // Wrapper function to save unit system to localStorage
   const handleUnitSystemChange = (newUnitSystem: UnitSystem) => {
@@ -692,13 +708,26 @@ const Index = () => {
           <div className="space-y-6">
             {/* Stats Bar with Controls */}
             <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="text-sm text-muted-foreground">
-                Showing <span className="font-bold text-foreground">{sortedPanels.length}</span> of {panels.length} panels
-                {selectedIds.size > 0 && (
-                  <span className="ml-2 text-primary">
-                    • <span className="font-bold">{selectedIds.size}</span> selected
-                  </span>
-                )}
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="text-sm text-muted-foreground">
+                  Showing <span className="font-bold text-foreground">{sortedPanels.length}</span> of {panels.length} panels
+                  {selectedIds.size > 0 && (
+                    <span className="ml-2 text-primary">
+                      • <span className="font-bold">{selectedIds.size}</span> selected
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="colorize-stats"
+                    checked={colorizeStats}
+                    onCheckedChange={handleColorizeStatsChange}
+                    aria-describedby="colorize-stats-desc"
+                  />
+                  <Label id="colorize-stats-desc" htmlFor="colorize-stats" className="text-sm text-muted-foreground cursor-pointer">
+                    Colorize stats
+                  </Label>
+                </div>
               </div>
               
               <div className="flex items-center gap-3">
@@ -865,6 +894,7 @@ const Index = () => {
               showUserActions={!!user}
               unitSystem={unitSystem}
               statThresholds={statThresholds}
+              colorizeStats={colorizeStats}
             />
                   ))}
                 </div>

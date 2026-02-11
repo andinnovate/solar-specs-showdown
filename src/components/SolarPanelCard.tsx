@@ -30,6 +30,8 @@ interface SolarPanelCardProps {
   showUserActions?: boolean;
   unitSystem?: UnitSystem;
   statThresholds?: StatThresholdMap;
+  /** When false, stats use plain/prior color and outlier flags are hidden. Default true. */
+  colorizeStats?: boolean;
 }
 
 export const SolarPanelCard = ({ 
@@ -43,7 +45,8 @@ export const SolarPanelCard = ({
   onToggleFavorite, 
   showUserActions = false,
   unitSystem = 'metric',
-  statThresholds
+  statThresholds,
+  colorizeStats = true,
 }: SolarPanelCardProps) => {
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [flagLoading, setFlagLoading] = useState(false);
@@ -109,6 +112,9 @@ export const SolarPanelCard = ({
     : null;
 
   const getStatPresentation = (metric: StatMetric, value: number | null, fallbackClass: string) => {
+    if (!colorizeStats) {
+      return { className: fallbackClass, outlierLevel: 'none' as OutlierLevel };
+    }
     const thresholds = statThresholds?.[metric] ?? null;
     const band = getStatBand(value, thresholds, STAT_DIRECTIONS[metric]);
     const bandClass = bandToClass(band);
@@ -120,6 +126,7 @@ export const SolarPanelCard = ({
   };
 
   const renderOutlierIndicator = (level: OutlierLevel) => {
+    if (!colorizeStats) return null;
     const indicator = outlierIndicatorText(level);
     if (!indicator) {
       return null;
