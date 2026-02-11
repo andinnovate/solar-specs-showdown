@@ -7,6 +7,7 @@ based on various criteria like search string, source, status, etc.
 
 import asyncio
 import argparse
+import re
 import sys
 import os
 from datetime import datetime
@@ -18,7 +19,25 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.logging_config import ScriptExecutionContext
 from scripts.database import SolarPanelDB
 from scripts.config import config
+from scripts.asin_manager import ASINManager
 from supabase import create_client
+
+# Amazon ASINs are 10 alphanumeric characters
+_ASIN_PATTERN = re.compile(r"^[A-Z0-9]{10}$", re.IGNORECASE)
+_ASIN_IN_URL_PATTERN = re.compile(r"(?:/dp/|/gp/product/)([A-Z0-9]{10})", re.IGNORECASE)
+
+
+def _parse_asin_input(value: str) -> Optional[str]:
+    """Parse ASIN from raw string or URL. Returns normalized uppercase ASIN or None."""
+    if not value or not value.strip():
+        return None
+    value = value.strip()
+    if "/" in value or value.lower().startswith("http"):
+        m = _ASIN_IN_URL_PATTERN.search(value)
+        return m.group(1).upper() if m else None
+    if _ASIN_PATTERN.fullmatch(value):
+        return value.upper()
+    return None
 
 
 class StagedASINManager:
@@ -485,7 +504,32 @@ Examples:
         type=str,
         help='Inspect a specific ASIN across all database tables'
     )
-    
+    parser.add_argument(
+        '--queue',
+        '-q',
+        type=str,
+        metavar='ASIN',
+        help='Queue a single ASIN for ingestion (10-char code or Amazon URL)'
+    )
+    parser.add_argument(
+        '--queue-source',
+        choices=['manual', 'search', 'competitor', 'csv', 'other'],
+        default='manual',
+        help='Source when using --queue (default: manual)'
+    )
+    parser.add_argument(
+        '--queue-keyword',
+        type=str,
+        default=None,
+        help='Optional source keyword when using --queue'
+    )
+    parser.add_argument(
+        '--queue-priority',
+        type=int,
+        default=0,
+        help='Priority when using --queue (higher = process sooner; default 0)'
+    )
+
     # Filter arguments for viewing
     parser.add_argument(
         '--filter-source',
@@ -551,7 +595,26 @@ Examples:
     )
     
     args = parser.parse_args()
-    
+
+    # Handle queue-single-ASIN command (no logger context required)
+    if args.queue:
+        asin = _parse_asin_input(args.queue)
+        if not asin:
+            print(f"Error: invalid ASIN or URL: {args.queue!r}", file=sys.stderr)
+            return 1
+        manager = ASINManager()
+        staged = await manager.stage_asin(
+            asin,
+            source=args.queue_source,
+            source_keyword=args.queue_keyword,
+            priority=args.queue_priority,
+        )
+        if staged:
+            print(f"Queued ASIN {asin} for ingestion (source={args.queue_source}).")
+            return 0
+        print(f"ASIN {asin} was not queued (already in database or already staged).", file=sys.stderr)
+        return 1
+
     # Handle inspection command
     if args.inspect:
         try:

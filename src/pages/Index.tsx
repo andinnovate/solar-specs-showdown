@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Sun, Grid, Table, List, ArrowUpDown, User, Settings, ExternalLink } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Sun, Grid, Table, List, ArrowUpDown, User, Settings, ExternalLink, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPanelPreferences } from "@/hooks/useUserPanelPreferences";
 import {
@@ -114,6 +115,7 @@ const Index = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [fadingOutPanels, setFadingOutPanels] = useState<Set<string>>(new Set());
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [colorizeStats, setColorizeStats] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('solar-panel-colorize-stats');
@@ -414,7 +416,33 @@ const Index = () => {
   }, [panels, unitSystem]);
 
   const filteredPanels = useMemo(() => {
-    return panels.filter(panel => {
+    let result = panels;
+
+    // Text search: name, description, manufacturer, ASIN (direct and from web_url)
+    const trimmedSearch = searchQuery.trim().toLowerCase();
+    if (trimmedSearch) {
+      const terms = trimmedSearch.split(/\s+/).filter(Boolean);
+      const asinFromUrl = (url: string | null): string | null => {
+        if (!url) return null;
+        const m = url.match(/\/dp\/([A-Z0-9]{10})/i) || url.match(/\/gp\/product\/([A-Z0-9]{10})/i);
+        return m ? m[1].toUpperCase() : null;
+      };
+      result = result.filter(panel => {
+        const asin = panel.asin ?? asinFromUrl(panel.web_url ?? null);
+        const name = (panel.name ?? "").toLowerCase();
+        const desc = (panel.description ?? "").toLowerCase();
+        const manufacturer = (panel.manufacturer ?? "").toLowerCase();
+        const asinStr = (asin ?? "").toLowerCase();
+        return terms.every(term =>
+          name.includes(term) ||
+          desc.includes(term) ||
+          manufacturer.includes(term) ||
+          asinStr.includes(term)
+        );
+      });
+    }
+
+    return result.filter(panel => {
       // Filter out hidden panels if user is logged in (but keep fading out panels for animation)
       if (user && hiddenPanels.has(panel.id) && !fadingOutPanels.has(panel.id)) {
         return false;
@@ -459,7 +487,7 @@ const Index = () => {
         (wattsPerKg === null || (wattsPerKg >= filters.wattsPerKgRange[0] && wattsPerKg <= filters.wattsPerKgRange[1])) &&
         (wattsPerSqM === null || (wattsPerSqM >= filters.wattsPerSqMRange[0] && wattsPerSqM <= filters.wattsPerSqMRange[1]));
     });
-  }, [panels, filters, user, hiddenPanels, favoritePanels, fadingOutPanels, unitSystem]);
+  }, [panels, filters, user, hiddenPanels, favoritePanels, fadingOutPanels, unitSystem, searchQuery]);
 
   const sortedPanels = useMemo(() => {
     const sorted = [...filteredPanels];
@@ -504,7 +532,7 @@ const Index = () => {
 
   useEffect(() => {
     setVisibleCount(24);
-  }, [filters, sortBy, viewMode, unitSystem, hiddenPanels, favoritePanels, user, panels.length]);
+  }, [filters, sortBy, viewMode, unitSystem, hiddenPanels, favoritePanels, user, panels.length, searchQuery]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -682,6 +710,21 @@ const Index = () => {
           </div>
         </div>
       </header>
+
+      {/* Search bar */}
+      <section className="px-4 py-3 border-b bg-background/30" style={{ maxWidth: '100vw', width: '100%' }}>
+        <div className="relative max-w-2xl">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden />
+          <Input
+            type="search"
+            placeholder="Search by name, description, brand, or ASIN..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 bg-background"
+            aria-label="Search panels by name, description, brand, or ASIN"
+          />
+        </div>
+      </section>
 
       {/* Filters Section */}
       <section className="px-4 py-4 border-b bg-background/50" style={{ maxWidth: '100vw', width: '100vw', overflowX: 'hidden' }}>
