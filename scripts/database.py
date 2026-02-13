@@ -56,31 +56,97 @@ class SolarPanelDB:
         except Exception as e:
             logger.error(f"Failed to track scraper usage: {e}")
     
-    async def get_panels_needing_price_update(self, days_old: int = 7, limit: int = 100) -> List[Dict]:
-        """Get panels that need price updates (only panels with ASIN, updated more than days_old days ago)"""
+    async def get_panels_needing_price_update(
+        self,
+        days_old: int = 7,
+        limit: int = 100,
+        price_unavailable_skip_days: int = 90
+    ) -> List[Dict]:
+        """Get panels that need price updates (only panels with ASIN, updated more than days_old days ago).
+        Excludes panels with price_unavailable_at set within the last price_unavailable_skip_days (e.g. $0 reject)."""
         try:
             from datetime import datetime, timedelta, timezone
-            
-            # Calculate cutoff date (panels updated before this date need updates)
+
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
             cutoff_iso = cutoff_date.isoformat()
-            
-            # Only select panels that have an ASIN (not null and not empty)
-            # and were updated more than days_old days ago
-            result = self.client.table('solar_panels').select('*').not_.is_('asin', 'null').neq('asin', '').lt('updated_at', cutoff_iso).order('updated_at', desc=False).limit(limit).execute()
-            
+
+            result = self.client.table('solar_panels').select('*').not_.is_('asin', 'null').neq('asin', '').lt('updated_at', cutoff_iso).order('updated_at', desc=False).limit(limit * 2).execute()
+            # Filter out panels recently marked as price-unavailable ($0) so we don't retry every run
+            unavailable_cutoff = datetime.now(timezone.utc) - timedelta(days=price_unavailable_skip_days)
+            filtered = []
+            excluded_recent = 0
+            for p in result.data:
+                at = p.get('price_unavailable_at')
+                if at is None:
+                    filtered.append(p)
+                else:
+                    try:
+                        ts = datetime.fromisoformat(at.replace('Z', '+00:00'))
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        if ts <= unavailable_cutoff:
+                            filtered.append(p)
+                        else:
+                            excluded_recent += 1
+                    except (TypeError, ValueError):
+                        filtered.append(p)
+                if len(filtered) >= limit:
+                    break
+            filtered = filtered[:limit]
+
+            excl_msg = f", excluding {excluded_recent} with recent price_unavailable" if excluded_recent else ""
             await self.log_script_execution(
-                'database', 'INFO', 
-                f'Retrieved {len(result.data)} panels with ASINs needing price update (updated >{days_old} days ago)'
+                'database', 'INFO',
+                f'Retrieved {len(filtered)} panels with ASINs needing price update (updated >{days_old} days ago{excl_msg})'
             )
-            return result.data
+            return filtered
         except Exception as e:
             await self.log_script_execution(
-                'database', 'ERROR', 
+                'database', 'ERROR',
                 f'Failed to get panels for price update: {str(e)}'
             )
             return []
-    
+
+    async def mark_price_unavailable(self, panel_id: str) -> bool:
+        """Set price_unavailable_at to now for this panel (e.g. after rejecting $0)."""
+        try:
+            from datetime import datetime, timezone
+            self.client.table('solar_panels').update({
+                'price_unavailable_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', panel_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to mark panel {panel_id} price unavailable: {e}")
+            return False
+
+    async def clear_price_unavailable(self, panel_id: str) -> bool:
+        """Clear price_unavailable_at when a non-zero price is successfully applied."""
+        try:
+            self.client.table('solar_panels').update({
+                'price_unavailable_at': None
+            }).eq('id', panel_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear price_unavailable for panel {panel_id}: {e}")
+            return False
+
+    async def get_fresh_raw_scraper_data(self, asin: str, days_old: int) -> Optional[Dict]:
+        """
+        Return raw_scraper_data for this ASIN if it was updated within the last days_old days.
+        Used by update_prices to skip the product-detail API call when we have recent data.
+        """
+        try:
+            from datetime import datetime, timedelta, timezone
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days_old)
+            cutoff_iso = cutoff.isoformat()
+            result = self.client.table('raw_scraper_data').select('id, asin, scraper_response, updated_at').eq('asin', asin).gte('updated_at', cutoff_iso).limit(1).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get fresh raw scraper data for ASIN {asin}: {e}")
+            return None
+
     async def update_panel_price(self, panel_id: str, new_price: float, source: str = 'scraperapi') -> bool:
         """Update panel price with history tracking"""
         try:

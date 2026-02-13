@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.logging_config import ScriptExecutionContext
 from scripts.error_handling import RetryConfig, RetryHandler
 from scripts.database import SolarPanelDB
-from scripts.scraper import ScraperAPIClient, ScraperAPIForbiddenError
+from scripts.scraper import ScraperAPIClient, ScraperAPIForbiddenError, ScraperAPIParser
 from scripts.utils import send_notification
 from scripts.config import config
 from supabase import create_client
@@ -189,25 +189,28 @@ async def update_panel_price(
     db: SolarPanelDB,
     panel: Dict,
     retry_handler: RetryHandler,
-    logger
+    logger,
+    days_old: int = 7
 ) -> Dict:
     """
     Update price for a single panel by fetching current data from Amazon.
-    
+    Uses stored raw_scraper_data when it is fresh (updated within days_old) to skip the API call.
+
     Args:
         scraper: ScraperAPI client
         db: Database client
         panel: Panel dictionary with at least 'id' and 'asin'
         retry_handler: Retry handler for API calls
         logger: Logger instance
-        
+        days_old: Consider raw data "fresh" if updated within this many days (same as pricing threshold)
+
     Returns:
         Dict with update results: {'success': bool, 'old_price': float, 'new_price': float, 'error': str}
     """
     asin = panel.get('asin')
     panel_id = panel.get('id')
     panel_name = panel.get('name', 'Unknown')
-    
+
     if not asin:
         return {
             'success': False,
@@ -215,8 +218,64 @@ async def update_panel_price(
             'new_price': None,
             'error': 'No ASIN found for panel'
         }
-    
+
     try:
+        # Use fresh raw data to skip API call when available
+        raw_row = await db.get_fresh_raw_scraper_data(asin, days_old)
+        if raw_row and raw_row.get('scraper_response'):
+            parsed_data = ScraperAPIParser.parse_product_data(raw_row['scraper_response'])
+            if parsed_data and parsed_data.get('price_usd') is not None:
+                new_price = parsed_data['price_usd']
+                old_price = panel.get('price_usd')
+                if new_price == 0:
+                    logger.log_script_event(
+                        "WARNING",
+                        f"Rejected $0 price from cached data for {panel_name} (ASIN: {asin})"
+                    )
+                    await db.mark_price_unavailable(panel_id)
+                    return {
+                        'success': False,
+                        'old_price': old_price,
+                        'new_price': 0,
+                        'error': 'Price is $0 (product unavailable)'
+                    }
+                if old_price == new_price:
+                    timestamp_updated = await db.update_panel_timestamp(panel_id)
+                    if timestamp_updated:
+                        logger.log_script_event(
+                            "INFO",
+                            f"Price unchanged for {panel_name}: ${old_price} (from cached raw data)"
+                        )
+                    return {
+                        'success': True,
+                        'old_price': old_price,
+                        'new_price': new_price,
+                        'error': None,
+                        'unchanged': True,
+                        'from_cache': True
+                    }
+                success = await db.update_panel_price(panel_id, new_price, source='scraperapi')
+                if success:
+                    await db.clear_price_unavailable(panel_id)
+                    logger.log_script_event(
+                        "INFO",
+                        f"Updated price for {panel_name}: ${old_price} → ${new_price} (from cached raw data)"
+                    )
+                    return {
+                        'success': True,
+                        'old_price': old_price,
+                        'new_price': new_price,
+                        'error': None,
+                        'from_cache': True
+                    }
+                return {
+                    'success': False,
+                    'old_price': old_price,
+                    'new_price': new_price,
+                    'error': 'Database update failed'
+                }
+            # Parsed data missing or no price: fall through to API call
+
         # Fetch current product data
         fetch_result = await retry_handler.execute_with_retry(
             scraper.fetch_product,
@@ -225,6 +284,7 @@ async def update_panel_price(
         )
         
         if not fetch_result:
+            await db.mark_price_unavailable(panel_id)
             return {
                 'success': False,
                 'old_price': panel.get('price_usd'),
@@ -240,6 +300,7 @@ async def update_panel_price(
         
         # Check if parsing succeeded
         if not fetch_result.get('parsed_data'):
+            await db.mark_price_unavailable(panel_id)
             return {
                 'success': False,
                 'old_price': panel.get('price_usd'),
@@ -253,6 +314,7 @@ async def update_panel_price(
         
         # Check if price is available
         if new_price is None:
+            await db.mark_price_unavailable(panel_id)
             return {
                 'success': False,
                 'old_price': old_price,
@@ -266,6 +328,7 @@ async def update_panel_price(
                 "WARNING",
                 f"Rejected $0 price update for {panel_name} (ASIN: {asin}) - product appears unavailable"
             )
+            await db.mark_price_unavailable(panel_id)
             return {
                 'success': False,
                 'old_price': old_price,
@@ -275,6 +338,7 @@ async def update_panel_price(
         
         # Check if price changed
         if old_price == new_price:
+            await db.clear_price_unavailable(panel_id)
             # Update timestamp even when price is unchanged
             timestamp_updated = await db.update_panel_timestamp(panel_id)
             if timestamp_updated:
@@ -304,6 +368,7 @@ async def update_panel_price(
         )
         
         if success:
+            await db.clear_price_unavailable(panel_id)
             logger.log_script_event(
                 "INFO",
                 f"Updated price for {panel_name}: ${old_price} → ${new_price}"
@@ -395,9 +460,11 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('--days-old', type=int, default=7, 
-                       help='Update panels last updated more than N days ago (default: 7)')
+                       help='Update panels last updated more than N days ago; also used as freshness for cached raw data to skip product-detail API calls (default: 7)')
     parser.add_argument('--limit', type=int, default=100,
                        help='Maximum number of panels to update (default: 100)')
+    parser.add_argument('--price-unavailable-skip-days', type=int, default=90,
+                       help='Skip panels that returned $0 (unavailable) for this many days before retrying (default: 90)')
     parser.add_argument('--asins', nargs='+', 
                        help='Specific ASINs to update (overrides --days-old and --limit)')
     parser.add_argument('--delay', type=float, default=2.0,
@@ -535,7 +602,8 @@ Examples:
                 # Get panels needing price update (database method already filters for ASINs)
                 all_panels = await db.get_panels_needing_price_update(
                     days_old=args.days_old,
-                    limit=args.limit
+                    limit=args.limit,
+                    price_unavailable_skip_days=args.price_unavailable_skip_days
                 )
                 
                 # Filter to only include panels with ASINs (safety check)
@@ -671,7 +739,8 @@ Examples:
                     f"Processing product detail ({i+1}/{len(panels_fallback)}): {panel.get('name', 'Unknown')} (ASIN: {asin})"
                 )
                 result = await update_panel_price(
-                    scraper, db, panel, retry_handler, logger
+                    scraper, db, panel, retry_handler, logger,
+                    days_old=args.days_old
                 )
                 if result['success']:
                     if result.get('unchanged'):
