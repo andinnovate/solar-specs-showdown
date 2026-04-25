@@ -258,7 +258,9 @@ class TestGetPanelsNeedingPriceUpdate:
         mock_neq_result.neq.assert_called_once_with('asin', '')
         mock_lt_result.lt.assert_called_once()  # Date filter
         mock_order_result.order.assert_called_once()
-        mock_limit_result.limit.assert_called_once_with(100)
+        # get_panels_needing_price_update intentionally over-fetches (limit * 2)
+        # before filtering out rows without ASINs.
+        mock_limit_result.limit.assert_called_once_with(200)
     
     @pytest.mark.asyncio
     async def test_get_panels_handles_exception(self, mock_db):
