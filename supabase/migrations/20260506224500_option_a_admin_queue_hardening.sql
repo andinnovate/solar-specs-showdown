@@ -65,6 +65,10 @@ FOR EACH ROW
 EXECUTE FUNCTION public.sync_user_profiles_from_auth_users();
 
 -- Rebuild admin queue view without auth.users dependency
+-- admin_get_flag_queue() returns SETOF admin_flag_queue and therefore depends on
+-- the view's composite row type. Drop it before replacing the view.
+DROP FUNCTION IF EXISTS public.admin_get_flag_queue();
+
 DROP VIEW IF EXISTS public.admin_flag_queue;
 
 CREATE VIEW public.admin_flag_queue AS
